@@ -461,3 +461,4 @@ var LEON = (function () {
   LEON.bufferify = bufferify;
   return LEON;
 })();
+module.exports = LEON;
