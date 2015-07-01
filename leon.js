@@ -241,6 +241,8 @@
             ret.writeUInt8(this.buffer.readValue(CHAR), i);
           }
           return ret;
+        } else if (type === REGEXP) {
+          return RegExp(this.readString());
         } else {
           throw Error('Invalid LEON.');
         }
@@ -248,10 +250,13 @@
       }
     }
     function typeCheck(val) {
+      var asStr;
       if (typeof val === 'object') {
         if (val === null) return NULL;
         if (Array.isArray(val)) return VARARRAY;
-        if (toString.call(val) === '[object Date]') return DATE;
+        asStr = toString.call(val);
+        if (asStr === '[object Date]') return DATE;
+        if (asStr === '[object RegExp]') return REGEXP;
         if (Buffer.isBuffer(val)) return BUFFER;
         return OBJECT;
       }
@@ -426,6 +431,10 @@
           for (i = 0; i < val.length; ++i) {
             this.writeValue(val[i], CHAR, true);
           }
+        }
+        if (type === REGEXP) {
+          if (!implicit) this.append(typeByte);
+          this.writeString(val.toString());
         }
       },
       writeString: function (str) {
