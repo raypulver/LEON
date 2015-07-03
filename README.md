@@ -1,13 +1,13 @@
 # LEON
 ## Little Endian Object Notation
 
-This is an optimized binary format for JavaScript data structures. Instead of storing data as a string it stores it in a Buffer object. It provides all the features of JSON but exchanges its readability for more efficiency. This module exposes three functions: `bufferify`, `parse`, and `Channel`. The first two can be used like so:
+This is an optimized binary format for JavaScript data structures. Instead of formatting the data as a human-readable string LEON stores it as a binary string that is optimized for compactness. It provides all the features of JSON but exchanges its readability for more efficiency. This module exposes three functions: `stringify`, `parse`, and `Channel`. The first two can be used like so:
 
 ```
 var LEON = require('leon');
 var o = { a: 1, b: 2, c: 'd' };
-var buf = LEON.bufferify(o);
-// <Buffer 00 04 61 00 62 00 63 00 64 00 00 01 00 03 00 01 02 09 00 00 01 00 02 10 03>
+var buf = LEON.stringify(o);
+// '\u0000\u0004a\u0000b\u0000c\u0000d\u0000\u0000\u0001\u0000\u0003\u0000\u0001\u0002\t\u0000\u0000\u0001\u0000\u0002\u0010\u0003'
 LEON.parse(buf);
 // { a: 1, b: 2, c: 'd' }; 
 ```
@@ -33,7 +33,7 @@ Besides storing numerical values in the smallest amount of bytes possible, LEON 
 
 This JSON is 184 characters. The equivalent structure stored in LEON is 120 bytes.
 
-The third function, `Channel`, is slightly more complex, but offers the greatest amount of optimization. You pass `Channel` a template for the data that is going to be parsed or written, and it returns an object that has it's own "parse" and "bufferify" functions for that schema of data. The goal of a Channel object is to eliminate the bytes needed to encode type information or object layout data. The limitation is that arrays must contain the same type, and you must know the keys of the object ahead of time.
+The third function, `Channel`, is slightly more complex, but offers the greatest amount of optimization. You pass `Channel` a template for the data that is going to be parsed or written, and it returns an object that has it's own "parse" and "bufferify" functions for that schema of data. The goal of a Channel object is to eliminate the bytes needed to encode type information or object layout data. The limitation is that arrays must contain the same type, and you must know the keys of the object ahead of time. An array of objects must contain objects with the same keys and associated values.
 
 Consider this example:
 
@@ -45,8 +45,8 @@ var channel = LEON.Channel({
 });
 var obj = { a: 'word', b: -500, c: [ { d: true, e: new Date(1435767518000) }, { d: false, e: new Date(
 1435767518000) } ] };
-var buf = channel.bufferify(obj);
-// <Buffer 77 6f 72 64 00 0c fe ff ff 00 02 20 de 12 94 55 21 de 12 94 55>
+var buf = channel.stringify(obj);
+// 'word\u0000\u000bþÿÿ\u0000\u0002 Þ\u0012U!Þ\u0012U'
 obj = channel.parse(buf);
 // Same object.
 ```
@@ -54,12 +54,11 @@ Notice that the buffer is only 21 bytes, compared to raw LEON which is 60 bytes,
 
 A full list of types is in `LEON.types`
 
-To denote that you are transferring an object you pass `Channel` an object with the desired fields and associated types, and to denote you are transferring an array you pass an array with a single element, the type of the elements of the array. If you want to encode an array of objects in a channel, they must have the same keys and associated types. Another example:
+To denote that you are transferring an object you pass `Channel` an object with the desired fields and associated types, and to denote you are transferring an array you pass an array with a single element, the type of the elements of the array. Again, if you want to encode an array of objects in a channel, they must have the same keys and associated types. Another example:
 
 ```
 var channel = LEON.Channel({ strings: [ LEON.types.String ], numbers: [ LEON.types.Int ] });
-var buf = channel.bufferify({ strings: ['the', 'dog', 'ate', 'the', 'cat'], numbers: [100, 1000, 10000, 100000]});
-// <Buffer 00 05 74 68 65 00 64 6f 67 00 61 74 65 00 74 68 65 00 63 61 74 00 00 04 64 e8 03 10 27 a0 86 01 00>
+var buf = channel.stringify({ strings: ['the', 'dog', 'ate', 'the', 'cat'], numbers: [100, 1000, 10000, 100000]});
 channel.parse(buf);
 // Same object.
 ```
