@@ -1,7 +1,7 @@
 # LEON
 ## Little Endian Object Notation
 
-This is an optimized binary format for JavaScript data structures. Instead of formatting the data as a human-readable string LEON stores it as a binary string that is optimized for compactness. It provides all the features of JSON but exchanges its readability for more efficiency. This module exposes three functions: `stringify`, `parse`, and `Channel`. The first two can be used like so:
+This is an optimized binary format for JavaScript data structures that works in the browser or Node. Instead of formatting the data as a human-readable string LEON stores it as a binary string that is optimized for compactness. It provides all the features of JSON but exchanges its readability for more efficiency. This module exposes three functions: `stringify`, `parse`, and `Channel`. The first two can be used like so:
 
 ```
 var LEON = require('leon');
