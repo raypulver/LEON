@@ -228,16 +228,7 @@
         } else {
           sig |= 0x800000;
         }
-        ret = sig*Math.pow(2, exp - 127);
-        return ret;
-        var copy = Math.abs(ret);
-        i = 0;
-        while (copy !== 1) {
-          copy >>>= 1;
-          i++;
-        }
-        return ret - (1 << (i + 1));
-        
+        return shift(sig, exp - 127);
       },
       readDoubleLE: function (offset) {
         var bytes = [];
@@ -250,18 +241,21 @@
             sig = 0;
         bytes[1] &= 0x0F;
         for (i = 0; i <= 6; ++i) {
-          sig += (bytes[i + 1] * Math.pow(2, (6 - i)*8));
+          sig += shift(bytes[i + 1], (6 - i)*8);
         }
         if (sign) {
-          sig = -complement(sig);
+          sig = complement(sig);
         } else {
           sig |= 0x10000000000000;
         }
-        return sig*Math.pow(2, exp - 1023);
+        return shift(sig, exp - 1023);
       }
     };
+    function shift (val, n) {
+      return val*Math.pow(2, n);
+    }
     function complement(num, bits) {
-      if (bits > 31) return ~num;
+      if (bits > 31 || !bits) return ~num;
       return (num ^ fill(bits)) + 1;
     }
     function fill(bits) {
