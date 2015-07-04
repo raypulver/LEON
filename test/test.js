@@ -50,7 +50,7 @@ describe('LEON encoder/decoder', function () {
   });
   it('can represent floating point numbers within reasonable precision', function () {
     var obj = { a: -232.22, b: -23332.2222222, c: 232.22, d: 23332.222222 };
-    var EPS = 1e-1;
+    var EPS = 1e-15;
     var bounce = LEON.parse(LEON.stringify(obj));
     expect(Math.abs(bounce.a - obj.a) < EPS).to.be.true;
     expect(Math.abs(bounce.b - obj.b) < EPS).to.be.true;

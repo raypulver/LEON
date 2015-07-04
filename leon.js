@@ -111,27 +111,19 @@
       },
       writeFloatLE: function (val, offset) {
         val = +val;
-        var exp = 127, sig = val, sign;
+        var exp = 127, sig = val, sign, log;
         if (sig < 0) sign = 1;
         else sign = 0;
         sig = Math.abs(sig);
-        if (sig < 1) {
-          while (sig < 1) {
-            sig *= 2;
-            exp--;
-          }
-        } else if (sig >= 2) {
-          while (sig > 2) {
-            sig /= 2;
-            exp++;
-          }
+        log = Math.log(sig)/Math.log(2);
+        if (log > 0) {
+          log = Math.floor(log);
+        } else {
+          log = Math.ceil(log);
         }
-        while (sig < ((1 << 23) - 1)) {
-          sig *= 2;
-          exp--;
-        }
-        sig = Math.floor(sig);
-        if (sign) sig = complement(sig, 24);
+        sig *= Math.pow(2, -log + 23);
+        exp += log;
+        sig = Math.round(sig);
         var bytes = [];
         bytes.push(sign << 7);
         bytes[0] += ((exp & 0xFE) >>> 1);
@@ -146,35 +138,28 @@
       },
       writeDoubleLE: function (val, offset) {
         val = +val;
-        var exp = 1023, sig = val, sign;
+        var exp = 1023, sig = val, sign, log;
         if (sig < 0) sign = 1;
         else sign = 0;
         sig = Math.abs(sig);
-        if (sig < 1) {
-          while (sig < 1) {
-            sig *= 2;
-            exp--;
-          }
-        } else if (sig >= 2) {
-          while (sig > 2) {
-            sig /= 2;
-            exp++;
-          }
+        log = Math.log(sig)/Math.log(2);
+        if (log > 0) {
+          log = Math.floor(log);
+        } else {
+          log = Math.ceil(log);
         }
-        while (sig < (1 << 52) - 1) {
-          sig *= 2;
-          exp--;
-        }
-        sig = Math.floor(sig);
-        sig &= 0xFFFFFFFFFFFFF;
+        sig *= Math.pow(2, -log + 52);
+        exp += log;
+        sig = Math.round(sig);
+        sig = parseInt(sig.toString(2).substr(1), 2);
         var bytes = [];
         bytes.push(sign << 7);
         bytes[0] += exp >>> 4;
         bytes.push((exp & 0x0F) << 4);
-        bytes[1] += ((sig >>> 48) & 0x0F);
-        var shift = 40;
-        for (var i = 0; i < 6; ++i, shift -= 8) {
-          bytes.push((sig >>> shift) & 0xFF);
+        bytes[1] += Math.floor(shift(sig, -48)) & 0x0F;
+        var sh = 40;
+        for (var i = 0; i < 6; ++i, sh -= 8) {
+          bytes.push(Math.floor(shift(sig, -sh)) & 0xFF);
         }
         for (i = bytes.length - 1; i >= 0; --i) {
           this.writeUInt8(bytes[i], offset + (bytes.length - 1 - i));
@@ -222,13 +207,8 @@
         for (i = 0; i <= 2; ++i) {
           sig += (bytes[i + 1] << ((2 - i)*8));
         }
-        if (sign) {
-          sig = -complement(sig, 24);
-          sig &= ~0x800000;
-        } else {
-          sig |= 0x800000;
-        }
-        return shift(sig, exp - 127);
+        sig |= 0x800000;
+        return shift((sign ? -sig : sig), exp - (127 + 23));
       },
       readDoubleLE: function (offset) {
         var bytes = [];
@@ -243,16 +223,25 @@
         for (i = 0; i <= 6; ++i) {
           sig += shift(bytes[i + 1], (6 - i)*8);
         }
-        if (sign) {
-          sig = complement(sig);
-        } else {
-          sig |= 0x10000000000000;
-        }
-        return shift(sig, exp - 1023);
+        sig += 0x10000000000000;
+        return shift((sign ? -sig : sig), exp - (1023 + 52));
       }
     };
     function shift (val, n) {
-      return val*Math.pow(2, n);
+      var i = 0;
+      if (n > 0) {
+        while (i < n) {
+          val *= 2;
+          i++;
+        }
+      } else {
+        n = -n;
+        while (i < n) {
+          val /= 2;
+          i++;
+        }
+      }
+      return val;
     }
     function complement(num, bits) {
       if (bits > 31 || !bits) return ~num;
