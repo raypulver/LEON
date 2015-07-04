@@ -1,6 +1,6 @@
 {
   "name": "leon",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Binary replacement for JSON designed for compactness",
   "main": "leon.js",
   "scripts": {
