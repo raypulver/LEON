@@ -494,13 +494,15 @@
           return FLOAT;
         }
         if (sig < 0) {
-          if (Math.abs(sig) < 1 << 7) return SIGNED | CHAR;
-          if (Math.abs(sig) < 1 << 15) return SIGNED | SHORT;
-          return SIGNED | INT;
+          if (Math.abs(sig) < 1 << 6) return SIGNED | CHAR;
+          if (Math.abs(sig) < 1 << 14) return SIGNED | SHORT;
+          if (Math.abs(sig) < 1 << 30) return SIGNED | INT;
+          return DOUBLE;
         }
-        if (sig < 1 << 8) return CHAR;
-        if (sig < 1 << 16) return SHORT;
-        return INT;
+        if (sig < 1 << 7) return CHAR;
+        if (sig < 1 << 15) return SHORT;
+        if (sig < Math.pow(2, 32)) return INT;
+        return DOUBLE;
       }
     }
     function $Encoder(obj, spec) {
@@ -735,7 +737,7 @@
       if (branch === void 0) branch = val;
       var keys, i;
       if (typeof branch === 'object') {
-        keys = Object.keys(branch);
+        keys = Object.getOwnPropertyNames(branch);
         if (!Array.isArray(branch)) keys.forEach(function (v) { setPush(ret, v); });
         for (i = 0; i < keys.length; ++i) {
           gatherStrings(val, ret, branch[keys[i]]);
@@ -770,7 +772,6 @@
     LEON.types = types;
     LEON.parse = parse;
     LEON.stringify = stringify;
-    LEON.complement = complement;
     LEON.Channel = Channel;
     return LEON;
   })();
