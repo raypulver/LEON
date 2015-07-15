@@ -62,3 +62,7 @@ var buf = channel.stringify({ strings: ['the', 'dog', 'ate', 'the', 'cat'], numb
 channel.parse(buf);
 // Same object.
 ```
+
+NOTE: If you are using LEON in Node.js then a Buffer will deserialize as a native Buffer object, but if you are using LEON in the browser then it will attempt to deserialize to a StringBuffer object. If StringBuffer has not been loaded and LEON attempts to deserialize a Buffer in the browser it will throw. You can find StringBuffer here:
+
+http://github.com/raypulver/string-buffer

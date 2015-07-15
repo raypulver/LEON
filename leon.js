@@ -446,7 +446,12 @@
           return new Date(this.buffer.readValue(INT) * 1000);
         } else if (type === BUFFER) {
           length = this.buffer.readValue(this.buffer.readUInt8());
-          ret = new Buffer(length);
+          if (typeof root.Buffer === 'undefined') {
+            if (typeof root.StringBuffer === 'undefined') throw Error('LEON object contains a Buffer but StringBuffer has not been loaded.');
+            ret = StringBuffer();
+          } else {
+            ret = new Buffer(length);
+          }
           for (i = 0; i < length; ++i) {
             ret.writeUInt8(this.buffer.readValue(CHAR), i);
           }
@@ -468,6 +473,7 @@
         if (asStr === '[object Date]') return DATE;
         if (asStr === '[object RegExp]') return REGEXP;
         if (typeof root.Buffer !== 'undefined' && Buffer.isBuffer(val)) return BUFFER;
+        if (typeof root.StringBuffer !== 'undefined' && val instanceof StringBuffer) return BUFFER;
         return OBJECT;
       }
       if (typeof val === 'function' || typeof val === 'undefined') {
