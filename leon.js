@@ -20,27 +20,31 @@
       BUFFER = 0x16,
       REGEXP = 0x17,
       NAN = 0x18,
+      INFINITY = 0x19,
+      MINUS_INFINITY = 0x1A,
       EMPTY = 0xFF;
 
-  var types = {};
-  types.SignedChar = (SIGNED | CHAR);
-  types.Char = CHAR;
-  types.SignedShort = (SIGNED | SHORT);
-  types.Short = SHORT;
-  types.SignedInt = (SIGNED | INT);
-  types.Int = INT;
-  types.Float = FLOAT;
-  types.Double = DOUBLE;
-  types.Array = VARARRAY;
-  types.Object = OBJECT;
-  types.String = STRING;
-  types.Boolean = (TRUE & FALSE);
-  types.Null = NULL;
-  types.Undefined = UNDEFINED;
-  types.Date = DATE;
-  types.Buffer = BUFFER;
-  types.RegExp = REGEXP;
-
+  var types = {
+    CHAR: (SIGNED | CHAR),
+    UNSIGNED_CHAR: CHAR,
+    SHORT: (SIGNED | SHORT),
+    UNSIGNED_SHORT: SHORT,
+    INT: (SIGNED | INT),
+    UNSIGNED_INT: INT,
+    FLOAT: FLOAT,
+    DOUBLE: DOUBLE,
+    ARRAY: VARARRAY,
+    OBJECT: OBJECT,
+    STRING: STRING,
+    BOOLEAN: (TRUE & FALSE),
+    NULL: NULL,
+    UNDEFINED: UNDEFINED,
+    DATE: DATE,
+    BUFFER: BUFFER,
+    REGEXP: REGEXP,
+    MINUS_INFINITY: MINUS_INFINITY,
+    POSITIVE_INFINITY: INFINITY
+  };
 
   var LEON = (function () {
     function $StringBuffer(str) {
@@ -442,6 +446,10 @@
           return null;
         } else if (type === NAN) {
           return NaN;
+        } else if (type === MINUS_INFINITY) {
+          return Number.NEGATIVE_INFINITY;
+        } else if (type === INFINITY) {
+          return Number.POSITIVE_INFINITY;
         } else if (type === DATE) {
           return new Date(this.buffer.readValue(INT) * 1000);
         } else if (type === BUFFER) {
@@ -487,6 +495,8 @@
       }
       if (typeof val === 'number') {
         if (val !== val) return NAN;
+        if (val === Number.NEGATIVE_INFINITY) return MINUS_INFINITY;
+        if (val === Number.POSITIVE_INFINITY) return INFINITY;
         var exp = 0, figures = 0, sig = val;
         if (sig % 1) {
           sig = Math.abs(sig);
@@ -556,7 +566,7 @@
       writeValue: function (val, type, implicit) {
         var typeByte = $StringBuffer(), bytes, i, tmp, index;
         typeByte.writeUInt8(type, 0);
-        if (type === UNDEFINED || type === TRUE || type === FALSE || type === NULL || type === NAN) {
+        if (type === UNDEFINED || type === TRUE || type === FALSE || type === NULL || type === NAN || type === MINUS_INFINITY || type === INFINITY) {
           this.append(typeByte);
           return 1;
         }
