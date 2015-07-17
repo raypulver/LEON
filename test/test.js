@@ -11,10 +11,10 @@ describe('LEON encoder/decoder', function () {
   });
   it('can agree on a Channel', function () {
     var template = {
-      c: LEON.types.String,
+      c: LEON.types.STRING,
       d: [{
-        a: LEON.types.SignedChar,
-        b: LEON.types.Boolean
+        a: LEON.types.CHAR,
+        b: LEON.types.BOOLEAN
       }]
     };
     var obj = {
@@ -34,16 +34,16 @@ describe('LEON encoder/decoder', function () {
   });
   it('this should work', function () {
     var channel = LEON.Channel({
-      a: LEON.types.String,
-      b: LEON.types.SignedInt,
-      c: [{ d: LEON.types.Boolean, e: LEON.types.Date }]
+      a: LEON.types.STRING,
+      b: LEON.types.INT,
+      c: [{ d: LEON.types.BOOLEAN, e: LEON.types.DATE }]
     });
     var obj = { a: 'word', b: -500, c: [ { d: true, e: new Date(1435767518000) }, { d: false, e: new Date(
 1435767518000) } ] };
     expect(channel.parse(channel.stringify(obj))).to.eql(obj);
   });
   it('this should work too', function () {
-    var channel = LEON.Channel({ strings: [ LEON.types.String ], numbers: [ LEON.types.Int ] });
+    var channel = LEON.Channel({ strings: [ LEON.types.STRING ], numbers: [ LEON.types.INT ] });
     var obj = { strings: ['the', 'dog', 'ate', 'the', 'cat'], numbers: [100, 1000, 10000, 100000]};
     var buf = channel.stringify(obj);
     expect(channel.parse(buf)).to.eql(obj);
@@ -56,6 +56,10 @@ describe('LEON encoder/decoder', function () {
     expect(Math.abs(bounce.b - obj.b) < EPS).to.be.true;
     expect(Math.abs(bounce.c - obj.c) < EPS).to.be.true;
     expect(Math.abs(bounce.d - obj.d) < EPS).to.be.true;
+  });
+  it('can serialize a RegExp', function () {
+    expect(LEON.parse(LEON.stringify(/54/i)).toString()).to.equal('/54/i');
+    expect(LEON.parse(LEON.stringify(/54/)).toString()).to.equal('/54/');
   });
 });
     

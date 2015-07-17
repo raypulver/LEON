@@ -465,7 +465,7 @@
           }
           return ret;
         } else if (type === REGEXP) {
-          return RegExp(this.readString());
+          return RegExp(this.readString(), this.readString());
         } else {
           throw Error('Invalid LEON.');
         }
@@ -564,7 +564,7 @@
         }
       },
       writeValue: function (val, type, implicit) {
-        var typeByte = $StringBuffer(), bytes, i, tmp, index;
+        var typeByte = $StringBuffer(), bytes, i, tmp, index, parts;
         typeByte.writeUInt8(type, 0);
         if (type === UNDEFINED || type === TRUE || type === FALSE || type === NULL || type === NAN || type === MINUS_INFINITY || type === INFINITY) {
           this.append(typeByte);
@@ -663,7 +663,12 @@
         }
         if (type === REGEXP) {
           if (!implicit) this.append(typeByte);
-          this.writeString(val.toString());
+          parts = regexpToParts(val);
+          this.writeString(parts[0]);
+          this.writeString(parts[1]);
+          return parts.reduce(function (r, v) {
+            return r + v.length + 1;
+          }, 0);
         }
       },
       writeString: function (str) {
@@ -729,6 +734,10 @@
         }
         return i;
       }
+    }
+    function regexpToParts (regex) {
+      regex = regex.toString();
+      return [regex.substr(1, regex.lastIndexOf('/') - 1), regex.substr(regex.lastIndexOf('/') + 1)];
     }
     function gatherLayouts(val, stringIndex, ret, branch) {
       var keys, i;

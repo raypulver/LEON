@@ -39,9 +39,9 @@ Consider this example:
 
 ```
 var channel = LEON.Channel({
-  a: LEON.types.String,
-  b: LEON.types.SignedInt,
-  c: [{ d: LEON.types.Boolean, e: LEON.types.Date }]
+  a: LEON.types.STRING,
+  b: LEON.types.INT,
+  c: [{ d: LEON.types.BOOLEAN, e: LEON.types.DATE }]
 });
 var obj = { a: 'word', b: -500, c: [ { d: true, e: new Date(1435767518000) }, { d: false, e: new Date(
 1435767518000) } ] };
@@ -57,7 +57,7 @@ A full list of types is in `LEON.types`
 To denote that you are transferring an object you pass `Channel` an object with the desired fields and associated types, and to denote you are transferring an array you pass an array with a single element, the type of the elements of the array. Again, if you want to encode an array of objects in a channel, they must have the same keys and associated types. Another example:
 
 ```
-var channel = LEON.Channel({ strings: [ LEON.types.String ], numbers: [ LEON.types.Int ] });
+var channel = LEON.Channel({ strings: [ LEON.types.STRING ], numbers: [ LEON.types.INT ] });
 var buf = channel.stringify({ strings: ['the', 'dog', 'ate', 'the', 'cat'], numbers: [100, 1000, 10000, 100000]});
 channel.parse(buf);
 // Same object.
