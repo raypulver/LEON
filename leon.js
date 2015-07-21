@@ -454,11 +454,14 @@
           return new Date(this.buffer.readValue(INT) * 1000);
         } else if (type === BUFFER) {
           length = this.buffer.readValue(this.buffer.readUInt8());
-          if (typeof root.Buffer === 'undefined') {
-            if (typeof root.StringBuffer === 'undefined') throw Error('LEON object contains a Buffer but StringBuffer has not been loaded.');
-            ret = StringBuffer();
-          } else {
+          try {
             ret = new Buffer(length);
+          } catch (e) {
+            try {
+              ret = StringBuffer();
+            } catch (e) {
+              throw Error('LEON object contains a Buffer but StringBuffer has not been loaded.');
+            }
           }
           for (i = 0; i < length; ++i) {
             ret.writeUInt8(this.buffer.readValue(CHAR), i);
@@ -480,8 +483,13 @@
         asStr = toString.call(val);
         if (asStr === '[object Date]') return DATE;
         if (asStr === '[object RegExp]') return REGEXP;
-        if (typeof root.Buffer !== 'undefined' && Buffer.isBuffer(val)) return BUFFER;
-        if (typeof root.StringBuffer !== 'undefined' && val instanceof StringBuffer) return BUFFER;
+        try {
+          if (Buffer.isBuffer(val)) return BUFFER;
+        } catch (e) {
+          try {
+            if (val instanceof StringBuffer) return BUFFER;
+          } catch (e) {}
+        }
         return OBJECT;
       }
       if (typeof val === 'function' || typeof val === 'undefined') {
@@ -657,6 +665,7 @@
         }
         if (type === BUFFER) {
           if (!implicit) this.append(typeByte);
+          this.writeValue(val.length, typeCheck(val.length));
           for (i = 0; i < val.length; ++i) {
             this.writeValue(val[i], CHAR, true);
           }
@@ -743,7 +752,7 @@
       var keys, i;
       if (!ret) ret = [];
       if (branch === void 0) branch = val;
-      if (typeof branch === 'object' && branch !== null) {
+      if (typeof branch === 'object' && !Buffer.isBuffer(branch) && toString.call(branch) !== '[object RegExp]' && toString.call(branch) !== '[object Date]' && branch !== null) {
         keys = Object.getOwnPropertyNames(branch);
         if (!Array.isArray(branch) && toString.call(branch) !== '[object Date]') {
           ret.push([]);
@@ -761,7 +770,7 @@
       if (!ret) ret = [];
       if (branch === void 0) branch = val;
       var keys, i;
-      if (typeof branch === 'object') {
+      if (typeof branch === 'object' && toString.call(branch) !== '[object RegExp]' && toString.call(branch) !== '[object Date]' && !Buffer.isBuffer(branch)) {
         keys = Object.getOwnPropertyNames(branch);
         if (!Array.isArray(branch)) keys.forEach(function (v) { setPush(ret, v); });
         for (i = 0; i < keys.length; ++i) {

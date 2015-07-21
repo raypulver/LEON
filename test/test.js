@@ -61,6 +61,13 @@ describe('LEON encoder/decoder', function () {
     expect(LEON.parse(LEON.stringify(/54/i)).toString()).to.equal('/54/i');
     expect(LEON.parse(LEON.stringify(/54/)).toString()).to.equal('/54/');
   });
+  it('can serialize a Buffer', function () {
+    var buf = new Buffer(4);
+    var num = 232323232;
+    buf.writeUInt32LE(num, 0);
+    var bounce = LEON.parse(LEON.stringify(buf));
+    expect(bounce.readUInt32LE(0)).to.equal(num);
+  });
 });
     
 function NOOP () {}
