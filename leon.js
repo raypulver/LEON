@@ -403,7 +403,7 @@
           } else {
             ret = {};
             keys = Object.getOwnPropertyNames(spec);
-            keys.sort(function (a, b) { return a - b; });
+            keys.sort(function (a, b) { return a > b; });
             for (i = 0; i < keys.length; ++i) {
               ret[keys[i]] = this.parseValueWithSpec(spec[keys[i]]);;
             }
@@ -560,7 +560,7 @@
             this.writeValue(val, DATE, true);
           } else {
             keys = Object.getOwnPropertyNames(spec);
-            keys.sort(function (a, b) { return a - b; });
+            keys.sort(function (a, b) { return a > b; });
             for (i = 0; i < keys.length; ++i) {
               this.writeValueWithSpec(val[keys[i]], spec[keys[i]]);
             }
