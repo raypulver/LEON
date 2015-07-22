@@ -325,11 +325,10 @@
     }
     $Parser.prototype = {
       readString: function () {
-        var ret = '', char;
-        while (true) {
-          char = this.buffer.readUInt8();
-          if (!char) break;
-          ret += String.fromCharCode(char);
+        var ret = '', length = this.buffer.readValue(this.buffer.readUInt8()), i = 0;
+        while (i < length) {
+          ret += String.fromCharCode(this.buffer.readUInt8());
+          ++i;
         }
         return ret;
       },
@@ -681,9 +680,11 @@
         }
       },
       writeString: function (str) {
-        var term = $StringBuffer();
-        term.writeUInt8(0, 0);
-        this.append($StringBuffer.concat([$StringBuffer.fromString(String(str)), term]));
+        this.writeValue(str.length, typeCheck(str.length));
+        for (var i = 0; i < str.length; ++i) {
+          this.writeValue(str.charCodeAt(i), CHAR, true);
+        }
+        return;
       },
       writeOLI: function (num) {
         if (!this.stringIndex.length) return this;
