@@ -474,7 +474,7 @@
         return ret;
       }
     }
-    function typeCheck(val) {
+    function typeCheck(val, isFloat) {
       var asStr;
       if (typeof val === 'object') {
         if (val === null) return NULL;
@@ -505,7 +505,7 @@
         if (val === Number.NEGATIVE_INFINITY) return MINUS_INFINITY;
         if (val === Number.POSITIVE_INFINITY) return INFINITY;
         var exp = 0, figures = 0, sig = val;
-        if (sig % 1) {
+        if (sig % 1 || isFloat) {
           sig = Math.abs(sig);
           if (sig < 1) {
             for (; sig < 1; --exp, sig *= 2) {}
@@ -782,6 +782,69 @@
       }
       return ret;
     }
+    function typeGcd(arr) {
+      var type = typeCheck(arr[0]);
+      if (typeof arr[0] === 'number') {
+        var highestMagnitude = Math.abs(arr[0]),
+            fp = (arr[0] % 1 !== 0),
+            sign = (arr[0] < 0 ? 1 : 0);
+        for (var i = 1; i < arr.length; ++i) {
+          if (typeof arr[i] !== 'number') throw Error('Received a non-numerical value in an array of numbers.');
+          if (Math.abs(arr[i]) > highestMagnitude) {
+            highestMagnitude = Math.abs(arr[i]);
+          }
+          if (arr[i] % 1 !== 0) {
+            fp = true;
+          }
+          if (arr[i] < 0) {
+            sign = 1;
+          }
+        }
+        return typeCheck((sign ? -1: 1)*highestMagnitude, fp);
+      } else if (type === VARARRAY) {
+        return [ typeGcd(arr.reduce(function (r, v) {
+          return r.concat(v);
+        }, [])) ];
+      } else if (type === OBJECT) {
+        var ret = {}
+        Object.getOwnPropertyNames(arr[0]).forEach(function (v) {
+          ret[v] = typeGcd(pluck(arr, v));
+        });
+        return ret;
+      } else {
+        if (type === FALSE) type = TRUE;
+        var thisType;
+        for (var i = 1; i < arr.length; ++i) {
+          thisType = typeCheck(arr[i]);
+          if (thisType === FALSE) thisType = TRUE;
+          if (thisType !== type) {
+            throw Error('Type mismatch.');
+          }
+        }
+        return type;
+      }
+    }
+    function pluck(arr, prop) {
+      var ret = [];
+      for (var i = 0; i < arr.length; ++i) {
+        if (typeof arr[i] !== 'object') throw Error('Received a non-object value when an object was expected.');
+        if (typeof arr[i][prop] === 'undefined') throw Error('Object ' + JSON.stringify(arr[i]) + ' has no property ' + String(prop) + '.');
+        ret.push(arr[i][prop]);
+      }
+      return ret;
+    }
+    function toTemplate(val) {
+      var type = typeCheck(val);
+      if (type === VARARRAY) {
+        return [typeGcd(val)];
+      } else if (type === OBJECT) {
+        var ret = {};
+        Object.getOwnPropertyNames(val).forEach(function (v) {
+          ret[v] = toTemplate(val[v]);
+        });
+      } else if (type === FALSE) return TRUE;
+      else return type;
+    }
     function setPush(arr, val) {
       if (arr.indexOf(val) === -1) arr.push(val);
     }
@@ -807,6 +870,7 @@
     LEON.types = types;
     LEON.parse = parse;
     LEON.stringify = stringify;
+    LEON.toTemplate = toTemplate;
     LEON.Channel = Channel;
     return LEON;
   })();

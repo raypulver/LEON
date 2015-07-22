@@ -68,6 +68,14 @@ describe('LEON encoder/decoder', function () {
     var bounce = LEON.parse(LEON.stringify(buf));
     expect(bounce.readUInt32LE(0)).to.equal(num);
   });
+  it('can deduce a template', function () {
+    var obj = [{ a: true, b: 'woop', c: [ -232222.22, 500, 59999 ] },
+      { a: true, b: 'doop', c: [-600, 500, 400] },
+      { a: false, b: 'shoop', c: [1, 2, 3] }
+    ]
+    var expected = [{a: LEON.types.BOOLEAN, b: LEON.types.STRING, c: [ LEON.types.DOUBLE ] }];
+    expect(LEON.toTemplate(obj)).to.eql(expected); 
+  });
 });
     
 function NOOP () {}
