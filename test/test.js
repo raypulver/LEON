@@ -113,7 +113,7 @@ describe('LEON encoder/decoder', function () {
       }]
     });
     var ser = channel.stringify(obj);
-    expect(workingChannel.parse(workingChannel.stringify(obj))).to.eql(obj);
+    expect(channel.parse(ser)).to.eql(obj);
   });
 });
     
