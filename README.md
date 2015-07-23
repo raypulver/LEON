@@ -33,7 +33,7 @@ Besides storing numerical values in the smallest amount of bytes possible, LEON 
 
 This JSON is 184 characters. The equivalent structure stored in LEON is 120 bytes.
 
-The third function, `Channel`, is slightly more complex, but offers the greatest amount of optimization. You pass `Channel` a template for the data that is going to be parsed or written, and it returns an object that has it's own "parse" and "bufferify" functions for that schema of data. The goal of a Channel object is to eliminate the bytes needed to encode type information or object layout data. The limitation is that arrays must contain the same type, and you must know the keys of the object ahead of time. An array of objects must contain objects with the same keys and associated values.
+The third function, `Channel`, is slightly more complex, but offers the greatest amount of optimization. You pass `Channel` a template for the data that is going to be parsed or written, and it returns an object that has it's own "parse" and "stringify" functions for that schema of data. The goal of a Channel object is to eliminate the bytes needed to encode type information or object layout data. The limitation is that arrays must contain the same type, and you must know the keys of the object ahead of time. An array of objects must contain objects with the same keys and associated values.
 
 Consider this example:
 
