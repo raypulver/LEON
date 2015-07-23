@@ -325,7 +325,7 @@
     }
     $Parser.prototype = {
       readString: function () {
-        var ret = '', length = this.buffer.readValue(this.buffer.readUInt8()), i = 0;
+        var ret = '', lenType = this.buffer.readUInt8(), length = this.buffer.readValue(lenType), i = 0;
         while (i < length) {
           ret += String.fromCharCode(this.buffer.readUInt8());
           ++i;
@@ -383,10 +383,13 @@
       parseValueWithSpec: function (spec) {
         var ret, i, length, keys, type;
         if (typeof spec === 'undefined') spec = this.spec;
-        if (spec === STRING) return this.readString();
-        else if (typeof spec === 'object') {
+        if (spec === STRING) {
+          ret = this.readString();
+          return ret;
+        } else if (typeof spec === 'object') {
           if (spec === DATE) {
-            return this.parseValue(spec);
+            ret = this.parseValue(spec);
+            return ret;
           } else if (Array.isArray(spec)) {
             if (spec.length === 0) return this.parseValue(VARARRAY);
             else {
@@ -404,7 +407,7 @@
             keys = Object.getOwnPropertyNames(spec);
             keys.sort(function (a, b) { return a > b; });
             for (i = 0; i < keys.length; ++i) {
-              ret[keys[i]] = this.parseValueWithSpec(spec[keys[i]]);;
+              ret[keys[i]] = this.parseValueWithSpec(spec[keys[i]]);
             }
             return ret;
           }
@@ -415,7 +418,7 @@
         }
       },
       parseValue: function (type) {
-        if (!type) type = this.buffer.readUInt8();
+        if (typeof type === 'undefined') type = this.buffer.readUInt8();
         var length, i, ret, index;
         if (type < OBJECT) {
           return this.buffer.readValue(type);
@@ -539,7 +542,7 @@
         this.buffer = $StringBuffer.concat([this.buffer, buf]);
       },
       writeData: function () {
-        if (this.spec) this.writeValueWithSpec(this.payload);
+        if (typeof this.spec !== 'undefined') this.writeValueWithSpec(this.payload);
         else this.writeValue(this.payload, typeCheck(this.payload));
         return this;
       },
@@ -548,7 +551,7 @@
       },
       writeValueWithSpec: function (val, spec) {
         var keys, i;
-        if (!spec) spec = this.spec;
+        if (typeof spec === 'undefined') spec = this.spec;
         if (typeof spec === 'object') {
           if (Array.isArray(spec)) {
             this.writeValue(val.length, typeCheck(val.length));
@@ -559,6 +562,7 @@
             this.writeValue(val, DATE, true);
           } else {
             keys = Object.getOwnPropertyNames(spec);
+            var morekeys = Object.getOwnPropertyNames(val);
             keys.sort(function (a, b) { return a > b; });
             for (i = 0; i < keys.length; ++i) {
               this.writeValueWithSpec(val[keys[i]], spec[keys[i]]);
@@ -818,7 +822,7 @@
           thisType = typeCheck(arr[i]);
           if (thisType === FALSE) thisType = TRUE;
           if (thisType !== type) {
-            throw Error('Type mismatch.');
+            throw new Error('Type mismatch.');
           }
         }
         return type;
@@ -842,6 +846,7 @@
         Object.getOwnPropertyNames(val).forEach(function (v) {
           ret[v] = toTemplate(val[v]);
         });
+        return ret;
       } else if (type === FALSE) return TRUE;
       else return type;
     }

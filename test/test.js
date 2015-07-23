@@ -74,7 +74,46 @@ describe('LEON encoder/decoder', function () {
       { a: false, b: 'shoop', c: [1, 2, 3] }
     ]
     var expected = [{a: LEON.types.BOOLEAN, b: LEON.types.STRING, c: [ LEON.types.DOUBLE ] }];
-    expect(LEON.toTemplate(obj)).to.eql(expected); 
+    var template = LEON.toTemplate(obj);
+    expect(template).to.eql(expected); 
+    var channel = LEON.Channel(template);
+    expect(channel.parse(channel.stringify(obj))).to.eql(obj);
+    expect(JSON.stringify(obj).length > LEON.stringify(obj).length && LEON.stringify(obj).length > channel.stringify(obj).length).to.be.true;
+  });
+  it('should throw on an invalid template', function () {
+    // I can't get chai's 'to.throw(Error)' feature to work tonight so just try to follow my logic, okay?
+    var obj = { woopdoop: 5, shoopdoop: ['woop', 5 ] };
+    try {
+      LEON.toTemplate(obj);
+      expect(false).to.be.true;
+      // ^^^ so this hopefully should never run
+    } catch (e) {
+      if (e instanceof Error && e.message === 'Type mismatch.')  expect(true).to.be.true;
+     else expect(true).to.be.false;
+    }
+  });
+  it('should deduce a more complex template', function () {
+    var obj = { woopdoop: 5, shoopdoop: [510, -510, 1, 0.5], doopwoop: [{
+      a: true,
+      b: 5,
+      c: [5, 2, 1],
+      d: 'woop',
+      e: new Date(1300000000)
+    }] };
+    var channel = LEON.Channel(LEON.toTemplate(obj));
+    var workingChannel = LEON.Channel({
+      woopdoop: LEON.types.UNSIGNED_CHAR,
+      shoopdoop: [LEON.types.DOUBLE],
+      doopwoop: [{
+        a: LEON.types.BOOLEAN,
+        b: LEON.types.UNSIGNED_CHAR,
+        c: [LEON.types.UNSIGNED_CHAR],
+        d: LEON.types.STRING,
+        e: LEON.types.DATE
+      }]
+    });
+    var ser = channel.stringify(obj);
+    expect(workingChannel.parse(workingChannel.stringify(obj))).to.eql(obj);
   });
 });
     
