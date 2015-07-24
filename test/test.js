@@ -119,6 +119,12 @@ describe('LEON encoder/decoder', function () {
     expect(LEON.stringify(((1 << 23) - 1) * Math.pow(2, -((1 << 7) - 1))).charCodeAt(1)).to.equal(LEON.types.FLOAT);
     expect(LEON.stringify(((1 << 23)) * Math.pow(2, -((1 << 8) - 1))).charCodeAt(1)).to.equal(LEON.types.DOUBLE);
   });
+  it('should know how many bytes the integer will fit into', function () {
+    expect(LEON.stringify(-128).charCodeAt(1)).to.equal(LEON.types.CHAR);
+    expect(LEON.stringify(-129).charCodeAt(1)).to.equal(LEON.types.SHORT);
+    expect(LEON.stringify(255).charCodeAt(1)).to.equal(LEON.types.UNSIGNED_CHAR);
+    expect(LEON.stringify(256).charCodeAt(1)).to.equal(LEON.types.UNSIGNED_SHORT);
+  });
 });
     
 function NOOP () {}
