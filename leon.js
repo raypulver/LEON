@@ -512,7 +512,7 @@
         if (sig < 0) {
           if (Math.abs(sig) <= 1 << 7) return SIGNED | CHAR;
           if (Math.abs(sig) <= 1 << 15) return SIGNED | SHORT;
-          if (Math.abs(sig) <= 1 << 31) return SIGNED | INT;
+          if (Math.abs(sig) <= Math.pow(2, 31)) return SIGNED | INT;
           return DOUBLE;
         }
         if (sig < 1 << 8) return CHAR;

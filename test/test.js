@@ -48,14 +48,9 @@ describe('LEON encoder/decoder', function () {
     var buf = channel.stringify(obj);
     expect(channel.parse(buf)).to.eql(obj);
   });
-  it('can represent floating point numbers within reasonable precision', function () {
+  it('can represent any floating point number with as much precision as JavaScript', function () {
     var obj = { a: -232.22, b: -23332.2222222, c: 232.22, d: 23332.222222 };
-    var EPS = 1e-15;
-    var bounce = LEON.parse(LEON.stringify(obj));
-    expect(Math.abs(bounce.a - obj.a) < EPS).to.be.true;
-    expect(Math.abs(bounce.b - obj.b) < EPS).to.be.true;
-    expect(Math.abs(bounce.c - obj.c) < EPS).to.be.true;
-    expect(Math.abs(bounce.d - obj.d) < EPS).to.be.true;
+    expect(LEON.parse(LEON.stringify(obj))).to.eql(obj);
   });
   it('can serialize a RegExp', function () {
     expect(LEON.parse(LEON.stringify(/54/i)).toString()).to.equal('/54/i');
