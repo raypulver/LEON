@@ -232,20 +232,7 @@
       }
     };
     function shift (val, n) {
-      var i = 0;
-      if (n > 0) {
-        while (i < n) {
-          val *= 2;
-          i++;
-        }
-      } else {
-        n = -n;
-        while (i < n) {
-          val /= 2;
-          i++;
-        }
-      }
-      return val;
+      return val*Math.pow(2, n);
     }
     function complement(num, bits) {
       if (bits > 31 || !bits) return ~num;
