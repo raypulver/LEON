@@ -506,7 +506,6 @@
           var exp = 103 + log;
           if (exp < 0 || exp > 255) return DOUBLE;
           sig *= Math.pow(2, -log + 24);
-          debugger;
           if (sig % 1) return DOUBLE;
           return FLOAT;
         }
