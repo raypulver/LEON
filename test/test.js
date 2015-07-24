@@ -116,14 +116,39 @@ describe('LEON encoder/decoder', function () {
     expect(channel.parse(ser)).to.eql(obj);
   });
   it('should know when it\'s a float and when it\'s a double', function () {
-    expect(LEON.stringify(((1 << 23) - 1) * Math.pow(2, -((1 << 7) - 1))).charCodeAt(1)).to.equal(LEON.types.FLOAT);
-    expect(LEON.stringify(((1 << 23)) * Math.pow(2, -((1 << 8) - 1))).charCodeAt(1)).to.equal(LEON.types.DOUBLE);
+    expect(LEON.stringify(((1 << 24) - 1) * Math.pow(2, 0 - 127)).charCodeAt(1)).to.equal(LEON.types.FLOAT);
+    expect(LEON.stringify(((1 << 24) - 1) * Math.pow(2, -1 - 127)).charCodeAt(1)).to.equal(LEON.types.DOUBLE);
+    expect(LEON.stringify(((1 << 24) + 1) * Math.pow(2, 0 - 127)).charCodeAt(1)).to.equal(LEON.types.DOUBLE);
   });
   it('should know how many bytes the integer will fit into', function () {
     expect(LEON.stringify(-128).charCodeAt(1)).to.equal(LEON.types.CHAR);
     expect(LEON.stringify(-129).charCodeAt(1)).to.equal(LEON.types.SHORT);
     expect(LEON.stringify(255).charCodeAt(1)).to.equal(LEON.types.UNSIGNED_CHAR);
     expect(LEON.stringify(256).charCodeAt(1)).to.equal(LEON.types.UNSIGNED_SHORT);
+  });
+  it('writes a float with the same bits as a Buffer would', function () {
+    ser = LEON.Channel(LEON.types.FLOAT).stringify(-0.125);
+    var buf = new Buffer(4);
+    for (var i = 0; i < buf.length; ++i) {
+      buf.writeUInt8(ser.charCodeAt(i), i);
+    }
+    var expected = new Buffer(4);
+    expected.writeFloatLE(-0.125, 0);
+    for (i = 0; i < buf.length; ++i) {
+      expect(buf[i]).to.equal(expected[i]);
+    }
+  });
+  it('writes a double with the same bits as a Buffer would', function () {
+    ser = LEON.Channel(LEON.types.DOUBLE).stringify(-232.222);
+    var buf = new Buffer(8);
+    for (var i = 0; i < buf.length; ++i) {
+      buf.writeUInt8(ser.charCodeAt(i), i);
+    }
+    var expected = new Buffer(8);
+    expected.writeDoubleLE(-232.222, 0);
+    for (i = 0; i < buf.length; ++i) {
+      expect(buf[i]).to.equal(expected[i]);
+    }
   });
 });
     

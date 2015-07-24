@@ -503,9 +503,10 @@
           } else {
             log = Math.floor(log);
           }
-          var exp = 105 + log;
-          if (exp < 0 || exp > 256) return DOUBLE;
-          sig *= Math.pow(2, -log + 23);
+          var exp = 103 + log;
+          if (exp < 0 || exp > 255) return DOUBLE;
+          sig *= Math.pow(2, -log + 24);
+          debugger;
           if (sig % 1) return DOUBLE;
           return FLOAT;
         }
@@ -726,7 +727,6 @@
         }
         tmp = OLI[i].slice().sort(function (a, b) { return a - b });
         for (j = 0; j < layout.length; ++j) {
-          tmp = OLI[i].slice().sort(function (a, b) { return a - b });
           if (layout[j] !== tmp[j]) {
             broken = true;
             break;
