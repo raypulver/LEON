@@ -116,7 +116,7 @@ describe('LEON encoder/decoder', function () {
     expect(channel.parse(ser)).to.eql(obj);
   });
   it('should know when it\'s a float and when it\'s a double', function () {
-    expect(LEON.stringify(((1 << 23) - 1) * Math.pow(2, -(1 << 7))).charCodeAt(1)).to.equal(LEON.types.FLOAT);
+    expect(LEON.stringify(((1 << 23) - 1) * Math.pow(2, -((1 << 7) - 1))).charCodeAt(1)).to.equal(LEON.types.FLOAT);
     expect(LEON.stringify(((1 << 23)) * Math.pow(2, -((1 << 8) - 1))).charCodeAt(1)).to.equal(LEON.types.DOUBLE);
   });
 });
