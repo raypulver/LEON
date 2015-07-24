@@ -510,13 +510,16 @@
         var exp = 0, figures = 0, sig = val;
         if (sig % 1 || isFloat) {
           sig = Math.abs(sig);
-          if (sig < 1) {
-            for (; sig < 1; --exp, sig *= 2) {}
+          var log = Math.log(sig)/Math.log(2);
+          if (log < 0) {
+            log = Math.ceil(log);
           } else {
-            for (; sig > 2; ++exp, sig /= 2) {}
+            log = Math.floor(log);
           }
-          for (; sig % 1 !== 0; figures++, sig *= 2) { if (figures > 23) return DOUBLE; }
-          if (exp < -128 || exp > 127) return DOUBLE;
+          var exp = 105 + log;
+          if (exp < 0 || exp > 256) return DOUBLE;
+          sig *= Math.pow(2, -log + 23);
+          if (sig % 1) return DOUBLE;
           return FLOAT;
         }
         if (sig < 0) {
