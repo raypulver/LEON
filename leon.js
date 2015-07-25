@@ -1,5 +1,5 @@
 "use strict";
-(function () {
+;;(function () {
   var root = this,
       previous_LEON = root.LEON;
   var PARSED_SI = 0x01, PARSED_OLI = 0x02;
@@ -9,6 +9,8 @@
       INT = 0x04,
       FLOAT = 0x06,
       DOUBLE = 0x07;
+  var SIGNED_SHORT = 0x03,
+      SIGNED_INT = 0x05;
   var VARARRAY = 0x80,
       OBJECT = 0x09,
       STRING = 0x10,
@@ -409,57 +411,61 @@
         var length, i, ret, index;
         if (type < OBJECT) {
           return this.buffer.readValue(type);
-        } else if (type === VARARRAY) {
-          type = this.buffer.readUInt8();
-          length = this.buffer.readValue(type);
-          ret = [];
-          for (i = 0; i < length; ++i) {
-            ret.push(this.parseValue());
-          }
-          return ret;
-        } else if (type === OBJECT) {
-          index = this.objectLayoutIndex[this.buffer.readValue(this.OLItype)];
-          ret = {};
-          for (i = 0; i < index.length; ++i) {
-            ret[this.stringIndex[index[i]]] = this.parseValue();
-          }
-        } else if (type === STRING) {
-          return this.stringIndex[this.buffer.readValue(this.stringIndexType)];
-        } else if (type === UNDEFINED) {
-          return void 0;
-        } else if (type === TRUE) {
-          return true;
-        } else if (type === FALSE) {
-          return false;
-        } else if (type === NULL) {
-          return null;
-        } else if (type === NAN) {
-          return NaN;
-        } else if (type === MINUS_INFINITY) {
-          return Number.NEGATIVE_INFINITY;
-        } else if (type === INFINITY) {
-          return Number.POSITIVE_INFINITY;
-        } else if (type === DATE) {
-          return new Date(this.buffer.readValue(INT) * 1000);
-        } else if (type === BUFFER) {
-          length = this.buffer.readValue(this.buffer.readUInt8());
-          try {
-            ret = new Buffer(length);
-          } catch (e) {
-            try {
-              ret = StringBuffer();
-            } catch (e) {
-              throw Error('LEON object contains a Buffer but StringBuffer has not been loaded.');
-            }
-          }
-          for (i = 0; i < length; ++i) {
-            ret.writeUInt8(this.buffer.readValue(CHAR), i);
-          }
-          return ret;
-        } else if (type === REGEXP) {
-          return RegExp(this.readString(), this.readString());
         } else {
-          throw Error('Invalid LEON.');
+          switch (type) {
+            case VARARRAY:
+              type = this.buffer.readUInt8();
+              length = this.buffer.readValue(type);
+              ret = [];
+              for (i = 0; i < length; ++i) {
+                ret.push(this.parseValue());
+              }
+              return ret;
+            case OBJECT:
+              index = this.objectLayoutIndex[this.buffer.readValue(this.OLItype)];
+              ret = {};
+              for (i = 0; i < index.length; ++i) {
+                ret[this.stringIndex[index[i]]] = this.parseValue();
+              }
+              break;
+            case STRING:
+              return this.stringIndex[this.buffer.readValue(this.stringIndexType)];
+            case UNDEFINED:
+              return void 0;
+            case TRUE:
+              return true;
+            case FALSE:
+              return false;
+            case NULL:
+              return null;
+            case NAN:
+              return NaN;
+            case MINUS_INFINITY:
+              return Number.NEGATIVE_INFINITY;
+            case INFINITY:
+              return Number.POSITIVE_INFINITY;
+            case DATE:
+              return new Date(this.buffer.readValue(INT) * 1000);
+            case BUFFER:
+              length = this.buffer.readValue(this.buffer.readUInt8());
+              try {
+                ret = new Buffer(length);
+              } catch (e) {
+                try {
+                  ret = StringBuffer();
+                } catch (e) {
+                  throw Error('LEON object contains a Buffer but StringBuffer has not been loaded.');
+                }
+              }
+              for (i = 0; i < length; ++i) {
+                ret.writeUInt8(this.buffer.readValue(CHAR), i);
+              }
+              return ret;
+            case REGEXP:
+              return RegExp(this.readString(), this.readString());
+            default:
+              throw Error('Invalid LEON.');
+          }
         }
         return ret;
       }
@@ -552,7 +558,6 @@
             this.writeValue(val, DATE, true);
           } else {
             keys = Object.getOwnPropertyNames(spec);
-            var morekeys = Object.getOwnPropertyNames(val);
             keys.sort(function (a, b) { return a > b; });
             for (i = 0; i < keys.length; ++i) {
               this.writeValueWithSpec(val[keys[i]], spec[keys[i]]);
@@ -567,110 +572,107 @@
       writeValue: function (val, type, implicit) {
         var typeByte = $StringBuffer(), bytes, i, tmp, index, parts;
         typeByte.writeUInt8(type, 0);
-        if (type === UNDEFINED || type === TRUE || type === FALSE || type === NULL || type === NAN || type === MINUS_INFINITY || type === INFINITY) {
-          this.append(typeByte);
-          return 1;
-        }
-        if (type === STRING) {
-          if (!implicit) this.append(typeByte);
-          if (!this.stringIndex) {
-            this.writeString(val);
-            return 2 + val.length;
-          }
-          this.writeValue(this.stringIndex.indexOf(val), this.stringIndexType, true)
-          return 2;
-        }
-        if (type === (SIGNED | CHAR)) {
-          if (!implicit) this.append(typeByte);
-          bytes = $StringBuffer();
-          bytes.writeInt8(val, 0);
-          this.append(bytes);
-          return 2;
-        }
-        if (type === CHAR) {
-          if (!implicit) this.append(typeByte);
-          bytes = $StringBuffer();
-          bytes.writeUInt8(val, 0);
-          this.append(bytes);
-          return 2;
-        }
-        if (type === (SIGNED | SHORT)) {
-          if (!implicit) this.append(typeByte);
-          bytes = $StringBuffer();
-          bytes.writeInt16LE(val, 0);
-          this.append(bytes);
-          return 3;
-        }
-        if (type === SHORT) {
-          if (!implicit) this.append(typeByte);
-          bytes = $StringBuffer();
-          bytes.writeUInt16LE(val, 0);
-          this.append(bytes);
-          return 3;
-        }
-        if (type === (SIGNED | INT)) {
-          if (!implicit) this.append(typeByte);
-          bytes = $StringBuffer();
-          bytes.writeInt32LE(val, 0);
-          this.append(bytes);
-          return 5;
-        }
-        if (type === INT) {
-          if (!implicit) this.append(typeByte);
-          bytes = $StringBuffer();
-          bytes.writeUInt32LE(val, 0);
-          this.append(bytes);
-          return 5;
-        }
-        if (type === FLOAT) {
-          if (!implicit) this.append(typeByte);
-          bytes = $StringBuffer();
-          bytes.writeFloatLE(val, 0);
-          this.append(bytes);
-          return 5;
-        }
-        if (type === DOUBLE) {
-          if (!implicit) this.append(typeByte);
-          bytes = $StringBuffer();
-          bytes.writeDoubleLE(val, 0);
-          this.append(bytes);
-          return 9;
-        }
-        if (type === VARARRAY) {
-          if (!implicit) this.append(typeByte);
-          this.writeValue(val.length, typeCheck(val.length));
-          for (i = 0; i < val.length; ++i) {
-            this.writeValue(val[i], typeCheck(val[i]));
-          }
-        }
-        if (type === OBJECT) {
-          if (!implicit) this.append(typeByte);
-          index = matchLayout(val, this.stringIndex, this.OLI);
-          if (!implicit) this.writeValue(index, this.OLItype, true);
-          for (i = 0; i < this.OLI[index].length; ++i) {
-            tmp = val[this.stringIndex[this.OLI[index][i]]];
-            this.writeValue(tmp, typeCheck(tmp));
-          }
-        }
-        if (type === DATE) {
-          if (!implicit) this.append(typeByte);
-          this.writeValue(Math.floor(val.valueOf() / 1000), INT, true);
-        }
-        if (type === BUFFER) {
-          if (!implicit) this.append(typeByte);
-          this.writeValue(val.length, typeCheck(val.length));
-          for (i = 0; i < val.length; ++i) {
-            this.writeValue(val[i], CHAR, true);
-          }
-        }
-        if (type === REGEXP) {
-          if (!implicit) this.append(typeByte);
-          parts = regexpToParts(val);
-          this.writeString(parts[0]);
-          this.writeString(parts[1]);
-          return parts.reduce(function (r, v) {
-            return r + v.length + 1;
-          }, 0);
+        switch (type) {
+          case UNDEFINED:
+          case TRUE:
+          case FALSE:
+          case NULL:
+          case NAN:
+          case MINUS_INFINITY:
+          case INFINITY:
+            this.append(typeByte);
+            return 1;
+          case STRING:
+            if (!implicit) this.append(typeByte);
+            if (!this.stringIndex) {
+              this.writeString(val);
+              return 2 + val.length;
+            }
+            this.writeValue(this.stringIndex.indexOf(val), this.stringIndexType, true)
+            return 2;
+          case SIGNED:
+            if (!implicit) this.append(typeByte);
+            bytes = $StringBuffer();
+            bytes.writeInt8(val, 0);
+            this.append(bytes);
+            return 2;
+          case CHAR:
+            if (!implicit) this.append(typeByte);
+            bytes = $StringBuffer();
+            bytes.writeUInt8(val, 0);
+            this.append(bytes);
+            return 2;
+          case SIGNED_SHORT:
+            if (!implicit) this.append(typeByte);
+            bytes = $StringBuffer();
+            bytes.writeInt16LE(val, 0);
+            this.append(bytes);
+            return 3;
+          case SHORT:
+            if (!implicit) this.append(typeByte);
+            bytes = $StringBuffer();
+            bytes.writeUInt16LE(val, 0);
+            this.append(bytes);
+            return 3;
+          case SIGNED_INT:
+            if (!implicit) this.append(typeByte);
+            bytes = $StringBuffer();
+            bytes.writeInt32LE(val, 0);
+            this.append(bytes);
+            return 5;
+          case INT:
+            if (!implicit) this.append(typeByte);
+            bytes = $StringBuffer();
+            bytes.writeUInt32LE(val, 0);
+            this.append(bytes);
+            return 5;
+          case FLOAT:
+            if (!implicit) this.append(typeByte);
+            bytes = $StringBuffer();
+            bytes.writeFloatLE(val, 0);
+            this.append(bytes);
+            return 5;
+          case DOUBLE:
+            if (!implicit) this.append(typeByte);
+            bytes = $StringBuffer();
+            bytes.writeDoubleLE(val, 0);
+            this.append(bytes);
+            return 9;
+          case VARARRAY:
+            if (!implicit) this.append(typeByte);
+            this.writeValue(val.length, typeCheck(val.length));
+            for (i = 0; i < val.length; ++i) {
+              this.writeValue(val[i], typeCheck(val[i]));
+            }
+            break;
+          case OBJECT:
+            if (!implicit) this.append(typeByte);
+            index = matchLayout(val, this.stringIndex, this.OLI);
+            if (!implicit) this.writeValue(index, this.OLItype, true);
+            for (i = 0; i < this.OLI[index].length; ++i) {
+              tmp = val[this.stringIndex[this.OLI[index][i]]];
+              this.writeValue(tmp, typeCheck(tmp));
+            }
+            break;
+          case DATE:
+            if (!implicit) this.append(typeByte);
+            this.writeValue(Math.floor(val.valueOf() / 1000), INT, true);
+            break;
+          case BUFFER:
+            if (!implicit) this.append(typeByte);
+            this.writeValue(val.length, typeCheck(val.length));
+            for (i = 0; i < val.length; ++i) {
+              this.writeValue(val[i], CHAR, true);
+            }
+            break;
+          case REGEXP:
+            if (!implicit) this.append(typeByte);
+            parts = regexpToParts(val);
+            this.writeString(parts[0]);
+            this.writeString(parts[1]);
+            return parts.reduce(function (r, v) {
+              return r + v.length + 1;
+            }, 0);
         }
       },
       writeString: function (str) {
@@ -777,44 +779,52 @@
     }
     function typeGcd(arr) {
       var type = typeCheck(arr[0]);
-      if (typeof arr[0] === 'number') {
-        var highestMagnitude = Math.abs(arr[0]),
-            fp = (arr[0] % 1 !== 0),
-            sign = (arr[0] < 0 ? 1 : 0);
-        for (var i = 1; i < arr.length; ++i) {
-          if (typeof arr[i] !== 'number') throw Error('Received a non-numerical value in an array of numbers.');
-          if (Math.abs(arr[i]) > highestMagnitude) {
-            highestMagnitude = Math.abs(arr[i]);
+      switch (type) {
+        case CHAR:
+        case SIGNED:
+        case SHORT:
+        case SIGNED_SHORT:
+        case INT:
+        case SIGNED_INT:
+        case FLOAT:
+        case DOUBLE:
+          var highestMagnitude = Math.abs(arr[0]),
+              fp = (arr[0] % 1 !== 0),
+              sign = (arr[0] < 0 ? 1 : 0);
+          for (var i = 1; i < arr.length; ++i) {
+            if (typeof arr[i] !== 'number') throw Error('Received a non-numerical value in an array of numbers.');
+            if (Math.abs(arr[i]) > highestMagnitude) {
+              highestMagnitude = Math.abs(arr[i]);
+            }
+            if (arr[i] % 1 !== 0) {
+              fp = true;
+            }
+            if (arr[i] < 0) {
+              sign = 1;
+            }
           }
-          if (arr[i] % 1 !== 0) {
-            fp = true;
+          return typeCheck((sign ? -1: 1)*highestMagnitude, fp);
+        case VARARRAY:
+          return [ typeGcd(arr.reduce(function (r, v) {
+            return r.concat(v);
+          }, [])) ];
+        case OBJECT:
+          var ret = {}
+          Object.getOwnPropertyNames(arr[0]).forEach(function (v) {
+            ret[v] = typeGcd(pluck(arr, v));
+          });
+          return ret;
+        default:
+          if (type === FALSE) type = TRUE;
+          var thisType;
+          for (var i = 1; i < arr.length; ++i) {
+            thisType = typeCheck(arr[i]);
+            if (thisType === FALSE) thisType = TRUE;
+            if (thisType !== type) {
+              throw new Error('Type mismatch.');
+            }
           }
-          if (arr[i] < 0) {
-            sign = 1;
-          }
-        }
-        return typeCheck((sign ? -1: 1)*highestMagnitude, fp);
-      } else if (type === VARARRAY) {
-        return [ typeGcd(arr.reduce(function (r, v) {
-          return r.concat(v);
-        }, [])) ];
-      } else if (type === OBJECT) {
-        var ret = {}
-        Object.getOwnPropertyNames(arr[0]).forEach(function (v) {
-          ret[v] = typeGcd(pluck(arr, v));
-        });
-        return ret;
-      } else {
-        if (type === FALSE) type = TRUE;
-        var thisType;
-        for (var i = 1; i < arr.length; ++i) {
-          thisType = typeCheck(arr[i]);
-          if (thisType === FALSE) thisType = TRUE;
-          if (thisType !== type) {
-            throw new Error('Type mismatch.');
-          }
-        }
-        return type;
+          return type;
       }
     }
     function pluck(arr, prop) {
@@ -828,16 +838,20 @@
     }
     function toTemplate(val) {
       var type = typeCheck(val);
-      if (type === VARARRAY) {
-        return [typeGcd(val)];
-      } else if (type === OBJECT) {
-        var ret = {};
-        Object.getOwnPropertyNames(val).forEach(function (v) {
-          ret[v] = toTemplate(val[v]);
-        });
-        return ret;
-      } else if (type === FALSE) return TRUE;
-      else return type;
+      switch (type) {
+        case VARARRAY:
+          return [typeGcd(val)];
+        case OBJECT:
+          var ret = {};
+          Object.getOwnPropertyNames(val).forEach(function (v) {
+            ret[v] = toTemplate(val[v]);
+          });
+          return ret;
+        case FALSE:
+          return TRUE;
+        default:
+          return type;
+      }
     }
     function setPush(arr, val) {
       if (arr.indexOf(val) === -1) arr.push(val);

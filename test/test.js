@@ -145,6 +145,15 @@ describe('LEON encoder/decoder', function () {
       expect(buf[i]).to.equal(expected[i]);
     }
   });
+  it('filters data according to a schema', function () {
+    var obj = { woop: 'doop', shoop: 'coop', loop: 'foop' };
+    var channel = LEON.Channel({
+      woop: LEON.types.STRING,
+      shoop: LEON.types.STRING
+    });
+    var expected = { woop: 'doop', shoop: 'coop' };
+    expect(channel.parse(channel.stringify(obj))).to.eql(expected);
+  });
 });
     
 function NOOP () {}
