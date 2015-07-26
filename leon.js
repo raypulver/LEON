@@ -26,6 +26,12 @@
       MINUS_INFINITY = 0x1A,
       EMPTY = 0xFF;
 
+  var LE = (function () {
+    var arr = new Float32Array(1);
+    arr[0] = 0.125;
+    return arr.buffer[0] === 0;
+  })();
+
   var types = {
     CHAR: (SIGNED | CHAR),
     UNSIGNED_CHAR: CHAR,
@@ -116,59 +122,30 @@
         return this.writeUInt32LE(val, offset);
       },
       writeFloatLE: function (val, offset) {
-        val = +val;
-        var exp = 127, sig = val, sign, log;
-        if (sig < 0) sign = 1;
-        else sign = 0;
-        sig = Math.abs(sig);
-        log = Math.log(sig)/Math.log(2);
-        if (log > 0) {
-          log = Math.floor(log);
+        var float = new Float32Array(1);
+        float[0] = val;
+        if (LE) {
+          for (var i = 0; i < 4; ++i) {
+            this.writeUInt8(float.buffer[i], offset + i);
+          }
         } else {
-          log = Math.ceil(log);
-        }
-        sig *= Math.pow(2, -log + 23);
-        exp += log;
-        sig = Math.round(sig);
-        var bytes = [];
-        bytes.push(sign << 7);
-        bytes[0] += ((exp & 0xFE) >>> 1);
-        bytes.push((exp & 0x01) << 7);
-        bytes[1] += ((sig >>> 16) & 0x7F);
-        bytes.push((sig >>> 8) & 0xFF);
-        bytes.push(sig & 0xFF);
-        for (var i = bytes.length - 1; i >= 0; --i) {
-          this.writeUInt8(bytes[i], offset + (bytes.length - 1 - i));
+          for (var i = 3; i >= 0; --i) {
+            this.writeUInt8(float.buffer[i], offset + (3 - i));
+          }
         }
         return offset + 4;
       },
       writeDoubleLE: function (val, offset) {
-        val = +val;
-        var exp = 1023, sig = val, sign, log;
-        if (sig < 0) sign = 1;
-        else sign = 0;
-        sig = Math.abs(sig);
-        log = Math.log(sig)/Math.log(2);
-        if (log > 0) {
-          log = Math.floor(log);
+        var doub = new Float64Array(1);
+        doub[0] = val;
+        if (LE) {
+          for (var i = 0; i < 8; ++i) {
+            this.writeUInt8(doub.buffer[i], offset + i);
+          }
         } else {
-          log = Math.ceil(log);
-        }
-        sig *= Math.pow(2, -log + 52);
-        exp += log;
-        sig = Math.round(sig);
-        sig = parseInt(sig.toString(2).substr(1), 2);
-        var bytes = [];
-        bytes.push(sign << 7);
-        bytes[0] += exp >>> 4;
-        bytes.push((exp & 0x0F) << 4);
-        bytes[1] += Math.floor(shift(sig, -48)) & 0x0F;
-        var sh = 40;
-        for (var i = 0; i < 6; ++i, sh -= 8) {
-          bytes.push(Math.floor(shift(sig, -sh)) & 0xFF);
-        }
-        for (i = bytes.length - 1; i >= 0; --i) {
-          this.writeUInt8(bytes[i], offset + (bytes.length - 1 - i));
+          for (var i = 7; i >= 0; --i) {
+            this.writeUInt8(doub.buffer[i], offset + (7 - i));
+          }
         }
         return offset + 8;
       },
@@ -201,36 +178,30 @@
         return val;
       },
       readFloatLE: function (offset) {
-        var bytes = [], ret;
-        for (var i = 0; i < 4; ++i) {
-          bytes.push(this.readUInt8(offset + i));
+        var float = new Float32Array(1);
+        if (LE) {
+          for (var i = 0; i < 4; ++i) {
+            float.buffer[i] = this.readUInt8(offset + i);
+          }
+        } else {
+          for (var i = 3; i >= 0; --i) {
+            float.buffer[i] = this.readUInt8(offset + (3 - i));
+          }
         }
-        bytes.reverse();
-        var sign = (0x80 & bytes[0]) >>> 7,
-            exp = ((bytes[0] & 0x7F) << 1) + ((bytes[1] & 0x80) >>> 7),
-            sig = 0;
-        bytes[1] &= 0x7F;
-        for (i = 0; i <= 2; ++i) {
-          sig += (bytes[i + 1] << ((2 - i)*8));
-        }
-        sig |= 0x800000;
-        return shift((sign ? -sig : sig), exp - (127 + 23));
+        return float[0];
       },
       readDoubleLE: function (offset) {
-        var bytes = [];
-        for (var i = 0; i < 8; ++i) {
-          bytes.push(this.readUInt8(offset + i));
+        var doub = new Float64Array(1);
+        if (LE) {
+          for (var i = 0; i < 8; ++i) {
+            doub.buffer[i] = this.readUInt8(offset + i);
+          }
+        } else {
+          for (var i = 7; i >= 0; --i) {
+            doub.buffer[i] = this.readUInt8(offset + (7 - i));
+          }
         }
-        bytes.reverse();
-        var sign = (0x80 & bytes[0]) >>> 7,
-            exp = ((bytes[0] & 0x7F) << 4) + ((bytes[1] & 0xF0) >>> 4),
-            sig = 0;
-        bytes[1] &= 0x0F;
-        for (i = 0; i <= 6; ++i) {
-          sig += shift(bytes[i + 1], (6 - i)*8);
-        }
-        sig += 0x10000000000000;
-        return shift((sign ? -sig : sig), exp - (1023 + 52));
+        return doub[0];
       }
     };
     function shift (val, n) {
@@ -502,17 +473,9 @@
         if (val === Number.POSITIVE_INFINITY) return INFINITY;
         var exp = 0, figures = 0, sig = val;
         if (sig % 1 || isFloat) {
-          sig = Math.abs(sig);
-          var log = Math.log(sig)/Math.log(2);
-          if (log < 0) {
-            log = Math.ceil(log);
-          } else {
-            log = Math.floor(log);
-          }
-          var exp = 103 + log;
-          if (exp < 0 || exp > 255) return DOUBLE;
-          sig *= Math.pow(2, -log + 24);
-          if (sig % 1) return DOUBLE;
+          var arr = new Float32Array(1);
+          arr[0] = sig;
+          if (sig !== arr[0]) return DOUBLE;
           return FLOAT;
         }
         if (sig < 0) {

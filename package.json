@@ -25,6 +25,7 @@
   },
   "homepage": "https://github.com/raypulver/leon#readme",
   "devDependencies": {
+    "benchmark": "^1.0.0",
     "chai": "^3.0.0",
     "gulp": "^3.9.0",
     "gulp-rename": "^1.2.2",

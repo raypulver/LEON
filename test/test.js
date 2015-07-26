@@ -112,7 +112,6 @@ describe('LEON encoder/decoder', function () {
   });
   it('should know when it\'s a float and when it\'s a double', function () {
     expect(LEON.stringify(((1 << 24) - 1) * Math.pow(2, 0 - 127)).charCodeAt(1)).to.equal(LEON.types.FLOAT);
-    expect(LEON.stringify(((1 << 24) - 1) * Math.pow(2, -1 - 127)).charCodeAt(1)).to.equal(LEON.types.DOUBLE);
     expect(LEON.stringify(((1 << 24) + 1) * Math.pow(2, 0 - 127)).charCodeAt(1)).to.equal(LEON.types.DOUBLE);
   });
   it('should know how many bytes the integer will fit into', function () {
