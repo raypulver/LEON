@@ -153,6 +153,11 @@ describe('LEON encoder/decoder', function () {
     var expected = { woop: 'doop', shoop: 'coop' };
     expect(channel.parse(channel.stringify(obj))).to.eql(expected);
   });
+  it('can represent a date with full precision', function () {
+    var date = new Date(1438876995235);
+    date = LEON.parse(LEON.stringify(date));
+    expect(date.valueOf()).to.equal(1438876995235);
+  });
 });
     
 function NOOP () {}

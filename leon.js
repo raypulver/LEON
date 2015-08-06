@@ -416,7 +416,7 @@
             case INFINITY:
               return Number.POSITIVE_INFINITY;
             case DATE:
-              return new Date(this.buffer.readValue(INT) * 1000);
+              return new Date(this.buffer.readValue(DOUBLE));
             case BUFFER:
               length = this.buffer.readValue(this.buffer.readUInt8());
               try {
@@ -619,7 +619,7 @@
             break;
           case DATE:
             if (!implicit) this.append(typeByte);
-            this.writeValue(Math.floor(val.valueOf() / 1000), INT, true);
+            this.writeValue(val.valueOf(), DOUBLE, true);
             break;
           case BUFFER:
             if (!implicit) this.append(typeByte);
