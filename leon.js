@@ -24,7 +24,14 @@
       NAN = 0x18,
       INFINITY = 0x19,
       MINUS_INFINITY = 0x1A,
+      DYNAMIC = 0xDD,
       EMPTY = 0xFF;
+
+  var USE_INDEXING = 0x1;
+
+  var flags = {
+    USE_INDEXING: USE_INDEXING
+  };
 
   var types = {
     CHAR: (SIGNED | CHAR),
@@ -42,12 +49,24 @@
     NULL: NULL,
     UNDEFINED: UNDEFINED,
     DATE: DATE,
+    NAN: NAN,
     BUFFER: BUFFER,
     REGEXP: REGEXP,
     MINUS_INFINITY: MINUS_INFINITY,
-    POSITIVE_INFINITY: INFINITY
+    INFINITY: INFINITY,
+    DYNAMIC: DYNAMIC
   };
-
+  function assignTo (obj, props) {
+    if (typeof props === 'undefined') {
+      if (typeof obj !== 'object') throw TypeError('Argument must be an object');
+      return assignTo.bind(this, obj);
+    }
+    if (typeof props !== 'object') throw TypeError('Argument must be an object');
+    Object.getOwnPropertyNames(props).forEach(function (v) {
+      this[v] = props[v];
+    }, obj);
+    return assignTo.bind(this, obj);
+  }
   var LEON = (function () {
     function $StringBuffer(str) {
       if (!(this instanceof $StringBuffer)) return new $StringBuffer(str);
@@ -392,11 +411,10 @@
         if (spec === STRING) {
           ret = this.readString();
           return ret;
+        } else if (spec === DYNAMIC) {
+          return this.parseValue();
         } else if (typeof spec === 'object') {
-          if (spec === DATE) {
-            ret = this.parseValue(spec);
-            return ret;
-          } else if (Array.isArray(spec)) {
+          if (Array.isArray(spec)) {
             if (spec.length === 0) return this.parseValue(VARARRAY);
             else {
               spec = spec[0];
@@ -424,9 +442,8 @@
         }
       },
       parseValue: function (type) {
-        var stamp;
         if (typeof type === 'undefined') type = this.buffer.readUInt8();
-        var length, i, ret, index;
+        var length, i, ret, index, stamp, key;
         if (type < OBJECT) {
           return this.buffer.readValue(type);
         } else {
@@ -440,14 +457,23 @@
               }
               return ret;
             case OBJECT:
-              index = this.objectLayoutIndex[this.buffer.readValue(this.OLItype)];
               ret = {};
-              for (i = 0; i < index.length; ++i) {
-                ret[this.stringIndex[index[i]]] = this.parseValue();
+              if (this.state & PARSED_SI) {
+                index = this.objectLayoutIndex[this.buffer.readValue(this.OLItype)];
+                for (i = 0; i < index.length; ++i) {
+                  ret[this.stringIndex[index[i]]] = this.parseValue();
+                }
+              } else {
+                length = this.buffer.readValue(this.buffer.readUInt8());
+                for (i = 0; i < length; ++i) {
+                  key = this.readString();
+                  ret[key] = this.parseValue();
+                }
               }
               break;
             case STRING:
-              return this.stringIndex[this.buffer.readValue(this.stringIndexType)];
+              if (this.state & PARSED_SI) return this.stringIndex[this.buffer.readValue(this.stringIndexType)];
+              return this.readString();
             case UNDEFINED:
               return void 0;
             case TRUE:
@@ -548,6 +574,7 @@
       this.payload = obj;
       this.buffer = $StringBuffer();
       this.spec = spec;
+      this.state = 0;
     }
     $Encoder.prototype = {
       append: function (buf) {
@@ -579,6 +606,8 @@
               this.writeValueWithSpec(val[keys[i]], spec[keys[i]]);
             }
           }
+        } else if (spec === DYNAMIC) {
+          this.writeValue(val, typeCheck(val));
         } else if (spec === (TRUE & FALSE)) {
           this.writeValue(val, typeCheck(val), true);
         } else {
@@ -600,7 +629,7 @@
             return 1;
           case STRING:
             if (!implicit) this.append(typeByte);
-            if (!this.stringIndex) {
+            if (!(this.state & PARSED_SI) || !this.stringIndex) {
               this.writeString(val);
               return 2 + val.length;
             }
@@ -663,11 +692,20 @@
             break;
           case OBJECT:
             if (!implicit) this.append(typeByte);
-            index = matchLayout(val, this.stringIndex, this.OLI);
-            if (!implicit) this.writeValue(index, this.OLItype, true);
-            for (i = 0; i < this.OLI[index].length; ++i) {
-              tmp = val[this.stringIndex[this.OLI[index][i]]];
-              this.writeValue(tmp, typeCheck(tmp));
+            if (this.state & PARSED_SI) {
+              index = matchLayout(val, this.stringIndex, this.OLI);
+              if (!implicit) this.writeValue(index, this.OLItype, true);
+              for (i = 0; i < this.OLI[index].length; ++i) {
+                tmp = val[this.stringIndex[this.OLI[index][i]]];
+                this.writeValue(tmp, typeCheck(tmp));
+              }
+            } else {
+              index = Object.getOwnPropertyNames(val);
+              this.writeValue(index.length, typeCheck(index.length));
+              for (i = 0; i < index.length; ++i) {
+                this.writeString(index[i]);
+                this.writeValue(val[index[i]], typeCheck(val[index[i]]));
+              }
             }
             break;
           case DATE:
@@ -719,6 +757,7 @@
       writeSI: function () {
         this.stringIndex = gatherStrings(this.payload);
         if (!this.stringIndex.length) {
+          this.state |= PARSED_SI;
           this.writeValue(EMPTY, CHAR, true)
           return this;
         }
@@ -727,6 +766,7 @@
         this.stringIndex.forEach(function (v) {
           this.writeString(v);
         }, this);
+        this.state |= PARSED_SI;
         return this;
       }
     }
@@ -761,16 +801,35 @@
       return [regex.substr(1, regex.lastIndexOf('/') - 1), regex.substr(regex.lastIndexOf('/') + 1)];
     }
     function gatherLayouts(val, stringIndex, ret, branch) {
-      var keys, i;
+      var keys, i, j, el;
       if (!ret) ret = [];
       if (branch === void 0) branch = val;
       if (typeof branch === 'object' && !Buffer.isBuffer(branch) && toString.call(branch) !== '[object RegExp]' && toString.call(branch) !== '[object Date]' && branch !== null) {
         keys = Object.getOwnPropertyNames(branch);
         if (!Array.isArray(branch) && toString.call(branch) !== '[object Date]') {
-          ret.push([]);
+          el = [];
           keys.forEach(function (v) {
-            ret[ret.length - 1].push(stringIndex.indexOf(v));
+            el.push(stringIndex.indexOf(v));
           });
+          el.sort(function (a, b) {
+            return a - b;
+          })
+          if ((function isNotInArray (arr, el) {
+            var cont;
+            for (i = 0; i < arr.length; ++i) {
+              cont = false;
+              if (arr[i].length !== el.length) continue;
+              for (j = 0; j < el.length; ++j) {
+                if (el[j] !== arr[i][j]) {
+                  cont = true;
+                  break;
+                }
+              }
+              if (cont) continue;
+              return false;
+            }
+            return true;
+          })(ret, el)) ret.push(el);
         }
         for (i = 0; i < keys.length; ++i) {
           gatherLayouts(val, stringIndex, ret, branch[keys[i]]);
@@ -808,7 +867,7 @@
               fp = (arr[0] % 1 !== 0),
               sign = (arr[0] < 0 ? 1 : 0);
           for (var i = 1; i < arr.length; ++i) {
-            if (typeof arr[i] !== 'number') throw Error('Received a non-numerical value in an array of numbers.');
+            if (typeof arr[i] !== 'number') return DYNAMIC;
             if (Math.abs(arr[i]) > highestMagnitude) {
               highestMagnitude = Math.abs(arr[i]);
             }
@@ -837,7 +896,7 @@
             thisType = typeCheck(arr[i]);
             if (thisType === FALSE) thisType = TRUE;
             if (thisType !== type) {
-              throw new Error('Type mismatch.');
+              return DYNAMIC;
             }
           }
           return type;
@@ -872,11 +931,15 @@
     function setPush(arr, val) {
       if (arr.indexOf(val) === -1) arr.push(val);
     }
-    function parse(buf) {
-      return $Parser($StringBuffer(buf)).parseSI().parseOLI().parseValue();
+    function parse(buf, flags) {
+      var parser = $Parser($StringBuffer(buf));
+      if (flags & USE_INDEXING) parser.parseSI().parseOLI();
+      return parser.parseValue();
     }
-    function stringify(val) {
-      return $Encoder(val).writeSI().writeOLI().writeData().export();
+    function stringify(val, flags) {
+      var encoder = $Encoder(val);
+      if (flags & USE_INDEXING) encoder.writeSI().writeOLI();
+      return encoder.writeData().export();
     }
     function Channel(spec) {
       if (!(this instanceof Channel)) return new Channel(spec);
@@ -891,7 +954,7 @@
       }
     }
     var LEON = {};
-    LEON.types = types;
+    assignTo(LEON)(types)(flags);
     LEON.parse = parse;
     LEON.stringify = stringify;
     LEON.toTemplate = toTemplate;
