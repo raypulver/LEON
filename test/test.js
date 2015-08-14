@@ -103,7 +103,6 @@ describe('LEON encoder/decoder', function () {
     expect(LEON.stringify(((1 << 24) + 1) * Math.pow(2, 0 - 127)).charCodeAt(0)).to.equal(LEON.DOUBLE);
   });
   it('should know how many bytes the integer will fit into', function () {
-    debugger;
     expect(LEON.stringify(-128, LEON.USE_INDEXING).charCodeAt(1)).to.equal(LEON.CHAR);
     expect(LEON.stringify(-129, LEON.USE_INDEXING).charCodeAt(1)).to.equal(LEON.SHORT);
     expect(LEON.stringify(255).charCodeAt(0)).to.equal(LEON.UNSIGNED_CHAR);
@@ -179,8 +178,11 @@ describe('LEON encoder/decoder', function () {
       dynamicallyTypedData: [LEON.DYNAMIC]
     });
     var serialized = channel.stringify(obj);
-    debugger;
     expect(channel.parse(serialized)).to.eql(obj);
+  });
+  it('should provide a string representation of a Channel', function () {
+    var expected = '{[Channel] STRING}';
+    expect(LEON.Channel(LEON.STRING).inspect()).to.equal(expected);
   });
 });
     

@@ -42,8 +42,6 @@
     UNSIGNED_INT: INT,
     FLOAT: FLOAT,
     DOUBLE: DOUBLE,
-    ARRAY: VARARRAY,
-    OBJECT: OBJECT,
     STRING: STRING,
     BOOLEAN: (TRUE & FALSE),
     NULL: NULL,
@@ -56,6 +54,12 @@
     INFINITY: INFINITY,
     DYNAMIC: DYNAMIC
   };
+  function typeToStr(type) {
+    for (var keys = Object.getOwnPropertyNames(types), i = 0; i < keys.length; ++i) {
+      if (types[keys[i]] === type) return keys[i];
+    }
+    throw TypeError(String(type) + ' is not a valid type.');
+  }
   function assignTo (obj, props) {
     if (typeof props === 'undefined') {
       if (typeof obj !== 'object') throw TypeError('Argument must be an object');
@@ -589,10 +593,11 @@
         return this.buffer.buffer;
       },
       writeValueWithSpec: function (val, spec) {
-        var keys, i;
+        var keys, i, type = typeof val;
         if (typeof spec === 'undefined') spec = this.spec;
         if (typeof spec === 'object') {
           if (Array.isArray(spec)) {
+            if (!Array.isArray(val)) throw TypeError('Was expecting an array but instead got a ' + type + '.');
             this.writeValue(val.length, typeCheck(val.length));
             for (i = 0; i < val.length; ++i) {
               this.writeValueWithSpec(val[i], spec[0]);
@@ -600,6 +605,7 @@
           } else if (toString.call(val) === '[object Date]') {
             this.writeValue(val, DATE, true);
           } else {
+            if (typeof val !== 'object') throw TypeError('Was expecting an object but instead got a ' + type + '.');
             keys = Object.getOwnPropertyNames(spec);
             keys.sort(function (a, b) { return a > b; });
             for (i = 0; i < keys.length; ++i) {
@@ -941,11 +947,97 @@
       if (flags & USE_INDEXING) encoder.writeSI().writeOLI();
       return encoder.writeData().export();
     }
+    function isQuotedKey(str) {
+      if (/^[0-9]/.test(str) || /[^\w_]/.test(str)) return true;
+      return false;
+    }
+    function inObject(obj, val) {
+      for (var i = 0, keys = Object.getOwnPropertyNames(obj); i < keys.length; ++i) {
+        if (obj[keys[i]] === val) return true;
+      }
+      return false;
+    }
+    function validateSpec(spec, path) {
+      var specialCharacters;
+      if (typeof path === 'undefined') path = '{Template}';
+      switch (typeof spec) {
+        case 'number':
+          if (!inObject(types, spec)) throw Error(path + ' is not a valid type constant.');
+          break;
+        case 'function': 
+          throw Error(path + ' is a function.');
+          break;
+        case 'boolean':
+          throw Error(path + ' is a boolean.');
+          break;
+        case 'undefined':
+          throw Error(path + ' is undefined. Did you misspell a type constant?');
+          break;
+        case 'string':
+          throw Error(path + ' is a string.');
+          break;
+        case 'object':
+          if (toString.call(spec) === '[object Date]') throw Error(path + ' is a Date object. Did you mean to supply LEON.DATE?');
+          if (toString.call(spec) === '[object RegExp]') throw Error(path + ' is a RegExp. Did you mean to supply LEON.REGEXP?');
+          if (Array.isArray(spec)) {
+            if (spec.length === 0) throw Error(path + ' is an array with no elements, must have one.');
+            if (spec.length > 1) throw Error(path + ' is an array with more than one element. If you want to serialize an array of various types you must use LEON.DYNAMIC.');
+            validateSpec(spec[0], path + '[0]');
+          } else {
+            for (var i = 0, keys = Object.getOwnPropertyNames(spec); i < keys.length; ++i) {
+              specialCharacters = isQuotedKey(spec);
+              validateSpec(spec[keys[i]], path + (specialCharacters ? '[\'' + keys[i] + '\']' : '.' + keys[i]));
+            }
+          }
+          break;
+      }
+    }      
     function Channel(spec) {
       if (!(this instanceof Channel)) return new Channel(spec);
+      validateSpec(spec);
       this.spec = spec;
     }
+    function strmul(str, n) {
+      var ret = '';
+      for (var i = 0; i < n; ++i) {
+        ret += str;
+      }
+      return ret;
+    }
+    function quoteIfNeeded (str, colors) {
+      if (isQuotedKey(str)) return (colors ? '\u001b[32m' : '') + '\'' + str + '\'' + (colors ? '\u001b[m' : '');
+      return str;
+    }
     Channel.prototype = {
+      inspect: function (j, data, branch, depth, init, multiline) {
+        var ret = '', first = false;
+        if (typeof data === 'undefined') data = { colors: false };
+        if (typeof multiline === 'undefined') multiline = {};
+        if (typeof init === 'undefined') {
+          ret += '{[Channel] ';
+          init = false;
+          first = true;
+        }
+        var keys, i;
+        if (typeof branch === 'undefined') depth = 0;
+        if (typeof branch === 'undefined') branch = this.spec;
+        if (typeof branch === 'object') {
+          if (Array.isArray(branch)) {
+            ret += '[' + this.inspect(j, data, branch[0], depth, init, multiline) + ']';
+          } else {
+            multiline.flag = true;
+            ret += '{\n';
+            for (keys = Object.getOwnPropertyNames(branch), i = 0; i < keys.length; ++i) {
+              ret += strmul('  ', depth + 1) + quoteIfNeeded(keys[i], data.colors) + ': ' + this.inspect(j, data, branch[keys[i]], depth + 1, init, multiline) + (keys.length - 1 === i ? '' : ',') + '\n';
+            }
+            ret += strmul('  ', depth) + '}';
+          }
+        } else {
+          ret += typeToStr(branch);
+        }
+        if (first) ret += '}';
+        return ret;
+      },
       stringify: function (val) {
         return $Encoder(val, this.spec).writeData().export();
       },
