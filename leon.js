@@ -519,7 +519,7 @@
       }
     }
     function typeCheck(val, isFloat) {
-      var asStr;
+      var asStr, float;
       if (typeof val === 'object') {
         if (val === null) return NULL;
         if (Array.isArray(val)) return VARARRAY;
@@ -548,18 +548,11 @@
         if (val !== val) return NAN;
         if (val === Number.NEGATIVE_INFINITY) return MINUS_INFINITY;
         if (val === Number.POSITIVE_INFINITY) return INFINITY;
-        var exp = 0, figures = 0, sig = val, log;
-        if (sig % 1 || isFloat) {
-          sig = Math.abs(val);
-          log = Math.log(sig)/Math.LN2;
-          log = (log < 0 ? Math.ceil(log) : Math.floor(log));
-          exp = 103 + log;
-          if (exp < 0 || exp > 255) return DOUBLE;
-          sig *= Math.pow(2, -log + 24);
-          if (Math.floor(sig) != sig) {
-            return DOUBLE;
-          }
-          return FLOAT;
+        if (val % 1 || isFloat) {
+          float = new Float32Array(1);
+          float[0] = val;
+          if (float[0] === val) return FLOAT;
+          return DOUBLE;
         }
         if (sig < 0) {
           if (Math.abs(sig) <= 1 << 7) return SIGNED | CHAR;

@@ -1,7 +1,7 @@
 {
   "name": "leon",
-  "version": "1.2.6",
-  "description": "Binary replacement for JSON designed for compactness",
+  "version": "1.2.7",
+  "description": "Binary replacement for JSON",
   "main": "leon.js",
   "scripts": {
     "test": "mocha"
