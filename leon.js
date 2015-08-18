@@ -554,15 +554,15 @@
           if (float[0] === val) return FLOAT;
           return DOUBLE;
         }
-        if (sig < 0) {
-          if (Math.abs(sig) <= 1 << 7) return SIGNED | CHAR;
-          if (Math.abs(sig) <= 1 << 15) return SIGNED | SHORT;
-          if (Math.abs(sig) <= Math.pow(2, 31)) return SIGNED | INT;
+        if (val < 0) {
+          if (Math.abs(val) <= 1 << 7) return SIGNED | CHAR;
+          if (Math.abs(val) <= 1 << 15) return SIGNED | SHORT;
+          if (Math.abs(val) <= Math.pow(2, 31)) return SIGNED | INT;
           return DOUBLE;
         }
-        if (sig < 1 << 8) return CHAR;
-        if (sig < 1 << 16) return SHORT;
-        if (sig < Math.pow(2, 32)) return INT;
+        if (val < 1 << 8) return CHAR;
+        if (val < 1 << 16) return SHORT;
+        if (val < Math.pow(2, 32)) return INT;
         return DOUBLE;
       }
     }
