@@ -410,6 +410,7 @@
         return this;
       },
       parseValueWithSpec: function (spec) {
+        debugger;
         var ret, i, length, keys, type;
         if (typeof spec === 'undefined') spec = this.spec;
         if (spec === STRING) {
@@ -420,7 +421,13 @@
         } else if (typeof spec === 'object') {
           if (Array.isArray(spec)) {
             if (spec.length === 0) return this.parseValue(VARARRAY);
-            else {
+            if (spec.object) {
+              ret = {};
+              for (i = 0; i < spec.length; i += 2) {
+                ret[spec[i]] = this.parseValueWithSpec(spec[i + 1]);
+              }
+              return ret;
+            } else {
               spec = spec[0];
               type = this.buffer.readUInt8();
               length = this.buffer.readValue(type);
@@ -430,14 +437,6 @@
               }
               return ret;
             }
-          } else {
-            ret = {};
-            keys = Object.getOwnPropertyNames(spec);
-            keys.sort(function (a, b) { return a > b; });
-            for (i = 0; i < keys.length; ++i) {
-              ret[keys[i]] = this.parseValueWithSpec(spec[keys[i]]);
-            }
-            return ret;
           }
         } else if (spec === (TRUE & FALSE)) {
           return this.parseValue();
@@ -586,24 +585,25 @@
         return this.buffer.buffer;
       },
       writeValueWithSpec: function (val, spec) {
+        debugger;
         var keys, i, type = typeof val;
         if (typeof spec === 'undefined') spec = this.spec;
         if (typeof spec === 'object') {
           if (Array.isArray(spec)) {
-            if (!Array.isArray(val)) throw TypeError('Was expecting an array but instead got a ' + type + '.');
-            this.writeValue(val.length, typeCheck(val.length));
-            for (i = 0; i < val.length; ++i) {
-              this.writeValueWithSpec(val[i], spec[0]);
+            if (!spec.object) {
+              if (!Array.isArray(val)) throw TypeError('Was expecting an array but instead got a ' + type + '.');
+              this.writeValue(val.length, typeCheck(val.length));
+              for (i = 0; i < val.length; ++i) {
+                this.writeValueWithSpec(val[i], spec[0]);
+              }
+            } else {
+              if (typeof val !== 'object') throw TypeError('Was expecting an object but instead got a ' + type + '.');
+              for (i = 0; i < spec.length; i += 2) {
+                this.writeValueWithSpec(val[spec[i]], spec[i + 1]);
+              }
             }
           } else if (toString.call(val) === '[object Date]') {
             this.writeValue(val, DATE, true);
-          } else {
-            if (typeof val !== 'object') throw TypeError('Was expecting an object but instead got a ' + type + '.');
-            keys = Object.getOwnPropertyNames(spec);
-            keys.sort(function (a, b) { return a > b; });
-            for (i = 0; i < keys.length; ++i) {
-              this.writeValueWithSpec(val[keys[i]], spec[keys[i]]);
-            }
           }
         } else if (spec === DYNAMIC) {
           this.writeValue(val, typeCheck(val));
@@ -933,7 +933,7 @@
     function parse(buf, flags) {
       var parser = $Parser($StringBuffer(buf));
       if (flags & USE_INDEXING) parser.parseSI().parseOLI();
-      return parser.parseValue();
+      return parser.parseValue(); 
     }
     function stringify(val, flags) {
       var encoder = $Encoder(val);
@@ -989,6 +989,25 @@
       if (!(this instanceof Channel)) return new Channel(spec);
       validateSpec(spec);
       this.spec = spec;
+      this.sorted = (function sort (spec) {
+        if (typeof spec === 'object') {
+          if (Array.isArray(spec)) {
+            var ret = [];
+            ret.push(sort(spec[0]));
+            return ret;
+          }
+          var ret = [];
+          var keys = Object.getOwnPropertyNames(spec);
+          keys.sort(function (a, b) { return a > b; });
+          for (var i = 0; i < keys.length; ++i) {
+            ret.push(keys[i]);
+            ret.push(sort(spec[keys[i]]));
+          }
+          ret.object = true;
+          return ret;
+        }
+        return spec;
+      })(spec);
     }
     function strmul(str, n) {
       var ret = '';
@@ -1032,10 +1051,10 @@
         return ret;
       },
       stringify: function (val) {
-        return $Encoder(val, this.spec).writeData().export();
+        return $Encoder(val, this.sorted).writeData().export();
       },
       parse: function (buf) {
-        return $Parser($StringBuffer(buf), this.spec).parseValueWithSpec();
+        return $Parser($StringBuffer(buf), this.sorted).parseValueWithSpec();
       }
     }
     var LEON = {};
