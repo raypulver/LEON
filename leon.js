@@ -2,6 +2,7 @@
 ;;(function () {
   var root = this,
       previous_LEON = root.LEON;
+  var ARRAY_BUFFER_DEFAULT_ALLOC = 0x10000;
   var PARSED_SI = 0x01, PARSED_OLI = 0x02;
   var SIGNED = 0x01,
       CHAR = 0x00,
@@ -14,6 +15,7 @@
   var VARARRAY = 0x80,
       OBJECT = 0x09,
       STRING = 0x10,
+      UTF16STRING = 0x11,
       TRUE = 0x20,
       FALSE = 0x21,
       NULL = 0x40,
@@ -29,11 +31,18 @@
 
   var USE_INDEXING = 0x1;
 
-  var flags = {
+  function $Hash(obj) {
+    var ret = Object.create(null);
+    Object.keys(obj).forEach(function (v) {
+      ret[v] = obj[v];
+    });
+    return ret;
+  }
+  var flags = $Hash({
     USE_INDEXING: USE_INDEXING
-  };
+  });
 
-  var types = {
+  var types = $Hash({
     CHAR: (SIGNED | CHAR),
     UNSIGNED_CHAR: CHAR,
     SHORT: (SIGNED | SHORT),
@@ -43,6 +52,7 @@
     FLOAT: FLOAT,
     DOUBLE: DOUBLE,
     STRING: STRING,
+    UTF16STRING: UTF16STRING,
     BOOLEAN: (TRUE & FALSE),
     NULL: NULL,
     UNDEFINED: UNDEFINED,
@@ -53,7 +63,55 @@
     MINUS_INFINITY: MINUS_INFINITY,
     INFINITY: INFINITY,
     DYNAMIC: DYNAMIC
-  };
+  });
+
+  var IS_NODE = (function () {
+    try {
+      new Buffer(4);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }).call(root);
+
+  var NATIVE_LITTLE_ENDIAN = (function () {
+    var tmp = new ArrayBuffer(2);
+    var ubytes = new Uint8Array(tmp);
+    var ushort = new Uint16Array(tmp);
+    ushort[0] = 1;
+    return !!ubytes[0];
+  })();
+
+  // returns true for little endian
+
+  var DEFAULT_DATAVIEW_ENDIANNESS = (function () {
+    var tmp = new ArrayBuffer(2);
+    var view = new DataView(tmp);
+    view.setUint16(0, 0x102);
+    return view.getUint8(0) === 2;
+  })();
+
+  var NATIVE_ENDIANNESS_CONVERSION = (function () {
+    var tmp = new ArrayBuffer(2);
+    var view = new DataView(tmp);
+    view.setUint8(0, 1);
+    view.setUint8(1, 2);
+    if (view.getUint16(0, true) !== 0x201) return false;
+    if (view.getUint16(0, false) !== 0x102) return false;
+    view.setUint16(0, 0x102, true);
+    if (view.getUint8(0) !== 2) return false;
+    if (view.getUint8(1) !== 1) return false;
+    return true;
+  })();
+
+  // make a couple "unions"
+  var buf32 = new ArrayBuffer(4),
+      bytes32 = new Uint8Array(buf32),
+      float = new Float32Array(buf32),
+      buf64 = new ArrayBuffer(8),
+      bytes64 = new Uint8Array(buf64),
+      double = new Float64Array(buf64);
+
   function typeToStr(type) {
     for (var keys = Object.getOwnPropertyNames(types), i = 0; i < keys.length; ++i) {
       if (types[keys[i]] === type) return keys[i];
@@ -66,265 +124,215 @@
       return assignTo.bind(this, obj);
     }
     if (typeof props !== 'object') throw TypeError('Argument must be an object');
-    Object.getOwnPropertyNames(props).forEach(function (v) {
+    Object.keys(props).forEach(function (v) {
       this[v] = props[v];
     }, obj);
     return assignTo.bind(this, obj);
   }
+  function complement(v, bits) {
+    if (bits >= 32) return -v;
+    return (((1 << bits) - 1) ^ v) + 1;
+  }
   var LEON = (function () {
-    function $StringBuffer(str) {
-      if (!(this instanceof $StringBuffer)) return new $StringBuffer(str);
-      if (str) this.buffer = str;
-      else this.buffer = '';
-    }
-    $StringBuffer.concat = function (arr) {
-      return $StringBuffer(arr.reduce(function (r, v) {
-        return r + v.buffer;
-      }, ''));
-    };
-    $StringBuffer.fromString = function (str) {
-      var ret = $StringBuffer(), i = 0;
-      while (str[i]) {
-        ret.writeUInt8(str.charCodeAt(i), i);
-        i++;
+    var $$ReallocMixin = (function () {
+      function realloc (size) {
+        if (typeof size === 'undefined') size = this.buffer.byteLength << 1;
+        var tmp = this.buffer;
+        this.buffer = new ArrayBuffer(size);
+        var bytes = new Uint8Array(tmp);
+        var newBytes = new Uint8Array(this.buffer);
+        newBytes.set(bytes, 0);
+        this.uchars = new Uint8Array(this.buffer);
+        this.chars = new Int8Array(this.buffer);
+        return this;
       }
-      return ret;
-    };
-    $StringBuffer.prototype = {
-      writeUInt8: function (val, offset) {
-        val = +val;
-        if (offset === this.buffer.length || offset === -1) {
-          this.buffer += String.fromCharCode(val);
-        } else {
-          this.buffer = this.buffer.substr(0, offset) + String.fromCharCode(val) + this.buffer.substr(offset + 1);
-        }
-        return offset + 1; 
-      },
-      writeInt8: function (val, offset) {
-        val = +val;
-        val = (val < 0 ? complement(-val, 8) : val);
-        if (offset === this.buffer.length || offset === -1) {
-          this.buffer += String.fromCharCode(val);
-        } else {
-          this.buffer = this.buffer.substr(0, offset) + String.fromCharCode(val) + this.buffer.substr(offset + 1);
-        }
-        return offset + 1;
-      },
-      writeUInt16LE: function (val, offset) {
-        val = +val;
-        if (offset === this.buffer.length || offset === -1) {
-          this.buffer += String.fromCharCode(val & 0xFF);
-          this.buffer += String.fromCharCode(val >>> 8);
-        } else {
-          this.buffer = this.buffer.substr(0, offset) + String.fromCharCode(val & 0xFF) + String.fromCharCode(val >>> 8) + this.buffer.substr(offset + 2);
-        }
-        return offset + 2;
-      },
-      writeInt16LE: function (val, offset) {
-        val = +val;
-        val = (val < 0 ? complement(-val, 16) : val);
+      return function () {
+        this._realloc = realloc;
+      }
+    })();
+    var $$BufferMixin = (function () {
+      function writeUInt8 (val, offset) {
+        if (offset >= this.buffer.byteLength) this._realloc();
+        this.uchars[offset] = val;
+        return this; 
+      }
+      function writeInt8 (val, offset) {
+        if (offset >= this.buffer.byteLength) this._realloc();
+        this.chars[offset] = val;
+        return this;
+      }
+      function writeUInt16LE (val, offset) {
+        if (offset >= this.buffer.byteLength - 1) this._realloc();
+        this.uchars[offset] = val & 0xFF;
+        this.uchars[offset + 1] = val >>> 8;
+        return this;
+      }
+      function writeInt16LE (val, offset) {
+        if (val < 0) val = complement(-val, 16);
         return this.writeUInt16LE(val, offset);
-      },
-      writeUInt32LE: function (val, offset) {
-        val = +val;
-        if (offset === this.buffer.length || offset === -1) {
-          this.buffer += String.fromCharCode(val & 0xFF) + String.fromCharCode((val >>> 8) & 0xFF) + String.fromCharCode((val >>> 16) & 0xFF) + String.fromCharCode((val >>> 24) & 0xFF);
-        } else {
-          this.buffer = this.buffer.substr(0, offset) + String.fromCharCode(val & 0xFF) + String.fromCharCode((val >>> 8) & 0xFF) + String.fromCharCode((val >>> 16) & 0xFF) + String.fromCharCode((val >>> 24) & 0xFF) + this.buffer.substr(offset + 4);
-        }
-      },
-      writeInt32LE: function (val, offset) {
-        val = +val;
-        val = (val < 0 ? complement(-val, 32) : val);
+      }
+      function writeUInt32LE (val, offset) {
+        if (offset >= this.buffer.byteLength - 3) this._realloc();
+        this.uchars[offset] = val & 0xFF;
+        this.uchars[offset + 1] = (val >>> 8) & 0xFF;
+        this.uchars[offset + 2] = (val >>> 16) & 0xFF;
+        this.uchars[offset + 3] = val >>> 24;
+        return this;
+      }
+      function writeInt32LE (val, offset) {
+        if (val < 0) val = complement(-val, 32);
         return this.writeUInt32LE(val, offset);
-      },
-      writeFloatLE: function (val, offset) {
-        var exp = 127, sign, log, ret = [];
-        if (val < 0) sign = 1;
-        else sign = 0;
-        val = Math.abs(val);
-        log = Math.log(val)/Math.LN2;
-        if (log < 0) log = Math.ceil(log);
-        else log = Math.floor(log);
-        val *= Math.pow(2, -log + 23);
-        exp += log;
-        val = Math.round(val);
-        val &= 0x7FFFFF;
-        ret.push(sign << 7);
-        ret[0] |= ((exp & 0xFE) >> 1);
-        ret.push((exp & 0x01) << 7);
-        ret[1] |= ((val >> 16) & 0x7F);
-        ret.push((val >> 8) & 0xFF);
-        ret.push(val & 0xFF);
-        for (var i = 3; i >= 0; --i) {
-          this.writeUInt8(ret[i], offset + (3 - i));
-        }
-        return offset + 4;
-      },
-      writeDoubleLE: function (val, offset) {
-        var exp = 1023, sign, log;
-        if (val < 0) sign = 1;
-        else sign = 0;
-        val = Math.abs(val);
-        log = Math.log(val)/Math.LN2;
-        if (log < 0) log = Math.ceil(log);
-        else log = Math.floor(log);
-        val *= Math.pow(2, -log + 52);
-        exp += log;
-        val = Math.round(val);
-        val = parseInt(val.toString(2).substr(1), 2);
-        var ret = [];
-        ret.push(sign << 7);
-        ret[0] |= (exp >> 4);
-        ret.push((exp & 0x0F) << 4);
-        ret[1] |= (Math.floor(val*Math.pow(2, -48)) & 0x0F);
-        var sh = 40;
-        for (var i = 0; i < 6; ++i) {
-          ret.push(Math.floor(val*Math.pow(2, -sh)) & 0xFF);
-          sh -= 8;
-        }
-        for (i = 7; i >= 0; --i) {
-          this.writeUInt8(ret[i], offset + (7 - i));
-        }
-        return offset + 8;
-      },
-      readUInt8: function (offset) {
-        offset >>>= 0;
-        return this.buffer.charCodeAt(offset);
-      },
-      readInt8: function (offset) {
-        offset >>>= 0;
-        var val = this.buffer.charCodeAt(offset);
-        if (0x80 & val) return -complement(val, 8);
-        return val;
-      },
-      readUInt16LE: function (offset) {
-        offset >>>= 0;
-        return this.buffer.charCodeAt(offset) | (this.buffer.charCodeAt(offset + 1) << 8);
-      },
-      readInt16LE: function (offset) {
-        var val = this.readUInt16LE(offset);
-        if (val & 0x8000) return -complement(val, 16);
-        return val;
-      },
-      readUInt32LE: function (offset) {
-        offset >>>= 0;
-        return (this.buffer.charCodeAt(offset) | (this.buffer.charCodeAt(offset + 1) << 8) | (this.buffer.charCodeAt(offset + 2) << 16) | (this.buffer.charCodeAt(offset + 3) << 24));
-      },
-      readInt32LE: function (offset) {
-        var val = this.readUInt32LE(offset);
-        if (val < 0) return val;
-        if (val & 0x80000000) return -complement(val, 32);
-        return val;
-      },
-      readFloatLE: function (offset) {
-        var bytes = [];
-        for (var i = 3; i >= 0; --i) {
-          bytes.push(this.readUInt8(offset + i));
-        }
-        var sign = ((0x80 & bytes[0]) >> 7);
-        var exp = ((bytes[0] & 0x7F) << 1) | ((bytes[1] & 0x80) >> 7);
-        var sig = 0;
-        bytes[1] &= 0x7F;
-        for (var i = 0; i <= 2; ++i) {
-          sig |= bytes[i + 1]*Math.pow(2, (2 - i)*8);
-        }
-        sig |= 0x800000;
-        return (sign === 1 ? -sig : sig)*Math.pow(2, exp - (127 + 23));
-      },
-      readDoubleLE: function (offset) {
-        var bytes = [];
-        for (var i = 7; i >= 0; --i) {
-          bytes.push(this.readUInt8(offset + i));
-        }
-        var sign = (0x80 & bytes[0]) >> 7;
-        var exp = ((bytes[0] & 0x7F) << 4) | ((bytes[1] & 0xF0) >> 4);
-        var sig = 0;
-        bytes[1] &= 0x0F;
-        for (var i = 0; i <= 6; ++i) {
-          sig += bytes[i + 1]*Math.pow(2, (6 - i)*8);
-        }
-        sig += 0x10000000000000;
-        return (sign === 1 ? -sig : sig)*Math.pow(2, exp - (1023 + 52));
       }
-    };
-    function shift (val, n) {
-      return val*Math.pow(2, n);
-    }
-    function padLeft(str, char, len) {
-      var ret = '';
-      for (var i = 0; i < len - str.length; ++i) {
-        ret += char;
-      }
-      ret += str;
-      return ret;
-    }
-    function complement(num, bits) {
-      var bitstring, flippedBitString, i, ret;
-      if (!bits) return ~num;
-      if (bits > 31) {
-        bitstring = num.toString(2);
-        bitstring = padLeft(bitstring, '0', bits);
-        flippedBitString = '';
-        for (i = 0; i < bitstring.length; ++i) {
-          if (bitstring[i] === '0') flippedBitString += '1';
-          else flippedBitString += '0';
+      function writeFloatLE (val, offset) {
+        if (offset >= this.buffer.byteLength - 3) this._realloc();
+        float[0] = val;
+        if (NATIVE_LITTLE_ENDIAN) {
+          this.uchars.set(bytes32, offset);
+          return this;
         }
-        ret = parseInt(flippedBitString, 2);
-        ret += 1;
+        for (var i = bytes32.length - 1; i >= 0; --i) {
+          this.uchars[offset + (bytes32.length - 1 - i)] = bytes32[i];
+        }
+        return this;
+      }
+      function writeDoubleLE (val, offset) {
+        if (offset >= this.buffer.byteLength - 7) this._realloc();
+        double[0] = val;
+        if (NATIVE_LITTLE_ENDIAN) {
+          this.uchars.set(bytes64, offset);
+          return this;
+        }
+        for (var i = bytes64.length - 1; i >= 0; --i) {
+          this.uchars[offset + (bytes64.length - 1 - i)] = bytes64[i];
+        }
+        return this;
+      }
+      function readUInt8 (offset) {
+        return this.uchars[offset];
+      }
+      function readInt8 (offset) {
+        return this.chars[offset];
+      }
+      function readUInt16LE (offset) {
+        return (this.uchars[offset + 1] << 8) | this.uchars[offset];
+      }
+      function readInt16LE (offset) {
+        var ret = this.readUInt16LE(offset);
+        if (ret & 0x8000) return -complement(ret, 16);
         return ret;
       }
-      return (num ^ fill(bits)) + 1;
+      function readUInt32LE (offset) {
+        return (this.uchars[offset + 3] << 24) | (this.uchars[offset + 2] << 16) | (this.uchars[offset + 1] << 8) | this.uchars[offset];
+      }
+      function readInt32LE (offset) {
+        var ret = this.readUInt32LE(offset);
+        if (ret < 0) return ret;
+        if (ret & 0x80000000) return -complement(ret, 32);
+        return ret;
+      }
+      function readFloatLE (offset) {
+        if (NATIVE_LITTLE_ENDIAN) {
+          for (var i = 0; i < bytes32.length; ++i) {
+            bytes32[i] = this.uchars[offset + i];
+          }
+          return float[0];
+        }
+        for (var i = bytes32.length - 1; i >= 0; --i) {
+          bytes32[bytes32.length - 1 - i] = this.uchars[offset + i];
+        }
+        return float[0];
+      }
+      function readDoubleLE (offset) {
+        if (NATIVE_LITTLE_ENDIAN) {
+          for (var i = 0; i < bytes64.length; ++i) {
+            bytes64[i] = this.uchars[offset + i];
+          }
+          return double[0];
+        }
+        for (var i = bytes64.length - 1; i >= 0; --i) {
+          bytes64[bytes64.length - 1 - i] = this.uchars[offset + i];
+        }
+        return double[0];
+      }
+      return function () {
+        this.writeUInt8 = writeUInt8;
+        this.writeInt8 = writeInt8;
+        this.writeUInt16LE = writeUInt16LE;
+        this.writeInt16LE = writeInt16LE;
+        this.writeUInt32LE = writeUInt32LE;
+        this.writeInt32LE = writeInt32LE;
+        this.writeFloatLE = writeFloatLE;
+        this.writeDoubleLE = writeDoubleLE;
+        this.readUInt8 = readUInt8;
+        this.readInt8 = readInt8;
+        this.readUInt16LE = readUInt16LE;
+        this.readInt16LE = readInt16LE;
+        this.readUInt32LE = readUInt32LE;
+        this.readInt32LE = readInt32LE;
+        this.readFloatLE = readFloatLE;
+        this.readDoubleLE = readDoubleLE;
+      }
+    })();
+    function $SmartArrayBuffer(length) {
+      if (!(this instanceof $SmartArrayBuffer)) return new $SmartArrayBuffer(length);
+      if (typeof length === 'undefined') length = ARRAY_BUFFER_DEFAULT_ALLOC;
+      if (length instanceof ArrayBuffer) this.buffer = length;
+      else if (IS_NODE && Buffer.isBuffer(length)) {
+        var tmp = length;
+        length = new ArrayBuffer(tmp.length);
+        var bytes = new Uint8Array(length);
+        for (var i = 0; i < tmp.length; ++i) {
+          bytes[i] = tmp[i];
+        }
+        this.buffer = length;
+      } else this.buffer = new ArrayBuffer(length);
+      this.uchars = new Uint8Array(this.buffer);
+      this.chars = new Int8Array(this.buffer);
+      $$BufferMixin.call(this);
+      $$ReallocMixin.call(this);
     }
-    function fill(bits) {
-      return (1 << bits) - 1;
-    }
-    function $BufferIterator(buffer) {
-      if (!(this instanceof $BufferIterator)) return new $BufferIterator(buffer);
-      this.buffer = buffer;
-      this.i = 0;
-    }
-    $BufferIterator.prototype = {
-      exhausted: function () {
-        return i >= this.buffer.length;
-      },
-      readUInt8: function () {
+    $SmartArrayBuffer.concat = function (arr) {
+      return $StringBuffer(arr.reduce(function (r, v) {
+        var ret = new Uint8Array(r.buffer.byteLength + v.buffer.byteLength);
+        ret.set(new Uint8Array(r.buffer), 0);
+        ret.set(new Uint8Array(v.buffer), r.buffer.byteLength);
+        return ret.buffer;
+      }, new $SmartArrayBuffer(new ArrayBuffer(0))));
+    };
+    var $$IteratorMixin = (function () {
+      function readUInt8 () {
         this.i++;
         return this.buffer.readUInt8(this.i - 1);
-      },
-      readInt8: function () {
+      }
+      function readInt8 () {
         this.i++;
         return this.buffer.readInt8(this.i - 1);
-      },
-      readUInt16: function () {
+      }
+      function readUInt16 () {
         this.i += 2;
         return this.buffer.readUInt16LE(this.i - 2);
-      },
-      readInt16: function () {
+      }
+      function readInt16 () {
         this.i += 2;
         return this.buffer.readInt16LE(this.i - 2);
-      },
-      readUInt32: function () {
+      }
+      function readUInt32 () {
         this.i += 4;
         return this.buffer.readUInt32LE(this.i - 4);
-      },
-      readInt32: function () {
+      }
+      function readInt32 () {
         this.i += 4;
         return this.buffer.readInt32LE(this.i - 4);
-      },
-      readInt64: function () {
-        this.i += 8;
-        return this.buffer.readInt64LE(this.i - 8);
-      },
-      readFloat: function () {
+      }
+      function readFloat () {
         this.i += 4;
         return this.buffer.readFloatLE(this.i - 4);
-      },
-      readDouble: function () {
+      }
+      function readDouble () {
         this.i += 8;
         return this.buffer.readDoubleLE(this.i - 8);
-      },
-      readValue: function (type) {
+      }
+      function readValue (type) {
         if (type === CHAR) {
           return this.readUInt8();
         } else if (type === (CHAR | SIGNED)) {
@@ -343,25 +351,41 @@
           return this.readDouble();
         }
       }
+      return function () {
+        this.readUInt8 = readUInt8;
+        this.readInt8 = readInt8;
+        this.readUInt16 = readUInt16;
+        this.readInt16 = readInt16;
+        this.readUInt32 = readUInt32;
+        this.readInt32 = readInt32;
+        this.readFloat = readFloat;
+        this.readDouble = readDouble;
+        this.readValue = readValue;
+      }
+    })();
+    function $BufferIterator(buffer) {
+      if (!(this instanceof $BufferIterator)) return new $BufferIterator(buffer);
+      this.buffer = buffer;
+      this.i = 0;
+      $$IteratorMixin.call(this);
     }
-    function $Parser(buffer, spec) {
-      if (!(this instanceof $Parser)) return new $Parser(buffer, spec);
-      this.buffer = $BufferIterator(buffer);
-      this.state = 0;
-      this.stringIndex = [];
-      this.objectLayoutIndex = [];
-      this.spec = spec;
-    }
-    $Parser.prototype = {
-      readString: function () {
+    var $$ParserMixin = (function () {
+      function readString (utf16) {
         var ret = '', lenType = this.buffer.readUInt8(), length = this.buffer.readValue(lenType), i = 0;
+        if (utf16) {
+          while (i < length) {
+            ret += String.fromCharCode(this.buffer.readUInt16());
+            ++i;
+          }
+          return ret;
+        }
         while (i < length) {
           ret += String.fromCharCode(this.buffer.readUInt8());
           ++i;
         }
         return ret;
-      },
-      parseSI: function () {
+      }
+      function parseSI () {
         if (this.state & PARSED_SI) throw Error('Already parsed string index.');
         var stringCount, char;
         this.stringIndexType = this.buffer.readUInt8();
@@ -382,8 +406,8 @@
         }
         this.state |= PARSED_SI;
         return this;
-      },
-      parseOLI: function () {
+      }
+      function parseOLI () {
         if (!(this.state & PARSED_SI)) this.parseSI();
         if (!this.stringIndex.length) return this;
         var count, numFields, char, i, j;
@@ -408,13 +432,15 @@
           }
         }
         return this;
-      },
-      parseValueWithSpec: function (spec) {
-        debugger;
+      }
+      function parseValueWithSpec (spec) {
         var ret, i, length, keys, type;
         if (typeof spec === 'undefined') spec = this.spec;
         if (spec === STRING) {
           ret = this.readString();
+          return ret;
+        } else if (spec === UTF16STRING) {
+          ret = this.readString(true);
           return ret;
         } else if (spec === DYNAMIC) {
           return this.parseValue();
@@ -431,9 +457,9 @@
               spec = spec[0];
               type = this.buffer.readUInt8();
               length = this.buffer.readValue(type);
-              ret = [];
+              ret = new Array(length);
               for (i = 0; i < length; ++i) {
-                ret.push(this.parseValueWithSpec(spec));
+                ret[i] = this.parseValueWithSpec(spec);
               }
               return ret;
             }
@@ -443,8 +469,8 @@
         } else {
           return this.parseValue(spec);
         }
-      },
-      parseValue: function (type) {
+      }
+      function parseValue (type) {
         if (typeof type === 'undefined') type = this.buffer.readUInt8();
         var length, i, ret, index, stamp, key;
         if (type < OBJECT) {
@@ -454,9 +480,9 @@
             case VARARRAY:
               type = this.buffer.readUInt8();
               length = this.buffer.readValue(type);
-              ret = [];
+              ret = new Array(length);
               for (i = 0; i < length; ++i) {
-                ret.push(this.parseValue());
+                ret[i] = this.parseValue();
               }
               return ret;
             case OBJECT:
@@ -477,6 +503,8 @@
             case STRING:
               if (this.state & PARSED_SI) return this.stringIndex[this.buffer.readValue(this.stringIndexType)];
               return this.readString();
+            case UTF16STRING:
+              return this.readString(true);
             case UNDEFINED:
               return void 0;
             case TRUE:
@@ -495,17 +523,17 @@
               return new Date(this.buffer.readValue(DOUBLE));
             case BUFFER:
               length = this.buffer.readValue(this.buffer.readUInt8());
-              try {
+              if (IS_NODE) {
                 ret = new Buffer(length);
-              } catch (e) {
-                try {
-                  ret = StringBuffer();
-                } catch (e) {
-                  throw Error('LEON object contains a Buffer but StringBuffer has not been loaded.');
+                for (i = 0; i < length; ++i) {
+                  ret[i] = this.buffer.readUInt8();
                 }
-              }
-              for (i = 0; i < length; ++i) {
-                ret.writeUInt8(this.buffer.readValue(CHAR), i);
+              } else {
+                ret = new ArrayBuffer(length);
+                var bytes = new Uint8Array(ret);
+                for (i = 0; i < length; ++i) {
+                  bytes[i] = this.buffer.readUInt8();
+                }
               }
               return ret;
             case REGEXP:
@@ -516,9 +544,25 @@
         }
         return ret;
       }
+      return function () {
+        this.parseValue = parseValue;
+        this.parseValueWithSpec = parseValueWithSpec;
+        this.readString = readString;
+        this.parseOLI = parseOLI;
+        this.parseSI = parseSI;
+      }
+    })();
+    function $Parser(buffer, spec) {
+      if (!(this instanceof $Parser)) return new $Parser(buffer, spec);
+      this.buffer = $BufferIterator(buffer);
+      this.state = 0;
+      this.stringIndex = [];
+      this.objectLayoutIndex = [];
+      this.spec = spec;
+      $$ParserMixin.call(this);
     }
     function typeCheck(val, isFloat) {
-      var asStr, float;
+      var asStr;
       if (typeof val === 'object') {
         if (val === null) return NULL;
         if (Array.isArray(val)) return VARARRAY;
@@ -527,10 +571,9 @@
         if (asStr === '[object RegExp]') return REGEXP;
         try {
           if (Buffer.isBuffer(val)) return BUFFER;
+          if (val instanceof ArrayBuffer) return BUFFER;
         } catch (e) {
-          try {
-            if (val instanceof StringBuffer) return BUFFER;
-          } catch (e) {}
+          if (val instanceof ArrayBuffer) return BUFFER;
         }
         return OBJECT;
       }
@@ -541,6 +584,7 @@
         return val ? TRUE : FALSE;
       }
       if (typeof val === 'string') {
+        if ([].map.call(val, function (v) { return v.charCodeAt(0); }).some(function (v) { return v > 255; })) return UTF16STRING;
         return STRING;
       }
       if (typeof val === 'number') {
@@ -548,7 +592,6 @@
         if (val === Number.NEGATIVE_INFINITY) return MINUS_INFINITY;
         if (val === Number.POSITIVE_INFINITY) return INFINITY;
         if (val % 1 || isFloat) {
-          float = new Float32Array(1);
           float[0] = val;
           if (float[0] === val) return FLOAT;
           return DOUBLE;
@@ -565,27 +608,23 @@
         return DOUBLE;
       }
     }
-    function $Encoder(obj, spec) {
-      if (!(this instanceof $Encoder)) return new $Encoder(obj, spec);
-      this.payload = obj;
-      this.buffer = $StringBuffer();
-      this.spec = spec;
-      this.state = 0;
-    }
-    $Encoder.prototype = {
-      append: function (buf) {
-        this.buffer = $StringBuffer.concat([this.buffer, buf]);
-      },
-      writeData: function () {
+    var $$EncoderMixin = (function () {
+      function writeData () {
         if (typeof this.spec !== 'undefined') this.writeValueWithSpec(this.payload);
         else this.writeValue(this.payload, typeCheck(this.payload));
         return this;
-      },
-      export: function () {
-        return this.buffer.buffer;
-      },
-      writeValueWithSpec: function (val, spec) {
-        debugger;
+      }
+      function toBuffer () {
+        if (IS_NODE) {
+          var ret = new Buffer(this.i);
+          for (var i = 0; i < this.i; ++i) {
+            ret[i] = this.buffer.uchars[i];
+          }
+          return ret;
+        }
+        return this.buffer.buffer.slice(0, this.i);
+      }
+      function writeValueWithSpec (val, spec) {
         var keys, i, type = typeof val;
         if (typeof spec === 'undefined') spec = this.spec;
         if (typeof spec === 'object') {
@@ -612,10 +651,14 @@
         } else {
           this.writeValue(val, spec, true);
         }
-      },
-      writeValue: function (val, type, implicit) {
-        var typeByte = $StringBuffer(), bytes, i, tmp, index, parts;
-        typeByte.writeUInt8(type, 0);
+      }
+      function appendUInt8 (val) {
+        this.buffer.writeUInt8(val, this.i);
+        this.i++;
+        return this;
+      }
+      function writeValue (val, type, implicit) {
+        var bytes, i, tmp, index, parts;
         switch (type) {
           case UNDEFINED:
           case TRUE:
@@ -624,10 +667,14 @@
           case NAN:
           case MINUS_INFINITY:
           case INFINITY:
-            this.append(typeByte);
+            this.appendUInt8(type);
             return 1;
+          case UTF16STRING:
+            if (!implicit) this.appendUInt8(type);
+            this.writeString(val, true);
+            return;
           case STRING:
-            if (!implicit) this.append(typeByte);
+            if (!implicit) this.appendUInt8(type);
             if (!(this.state & PARSED_SI) || !this.stringIndex) {
               this.writeString(val);
               return 2 + val.length;
@@ -635,62 +682,54 @@
             this.writeValue(this.stringIndex.indexOf(val), this.stringIndexType, true)
             return 2;
           case SIGNED:
-            if (!implicit) this.append(typeByte);
-            bytes = $StringBuffer();
-            bytes.writeInt8(val, 0);
-            this.append(bytes);
+            if (!implicit) this.appendUInt8(type);
+            this.buffer.writeInt8(val, this.i);
+            this.i++;
             return 2;
           case CHAR:
-            if (!implicit) this.append(typeByte);
-            bytes = $StringBuffer();
-            bytes.writeUInt8(val, 0);
-            this.append(bytes);
+            if (!implicit) this.appendUInt8(type);
+            this.buffer.writeUInt8(val, this.i);
+            this.i++;
             return 2;
           case SIGNED_SHORT:
-            if (!implicit) this.append(typeByte);
-            bytes = $StringBuffer();
-            bytes.writeInt16LE(val, 0);
-            this.append(bytes);
+            if (!implicit) this.appendUInt8(type);
+            this.buffer.writeInt16LE(val, this.i);
+            this.i += 2;
             return 3;
           case SHORT:
-            if (!implicit) this.append(typeByte);
-            bytes = $StringBuffer();
-            bytes.writeUInt16LE(val, 0);
-            this.append(bytes);
+            if (!implicit) this.appendUInt8(type);
+            this.buffer.writeUInt16LE(val, this.i);
+            this.i += 2;
             return 3;
           case SIGNED_INT:
-            if (!implicit) this.append(typeByte);
-            bytes = $StringBuffer();
-            bytes.writeInt32LE(val, 0);
-            this.append(bytes);
+            if (!implicit) this.appendUInt8(type);
+            this.buffer.writeInt32LE(val, this.i);
+            this.i += 4;
             return 5;
           case INT:
-            if (!implicit) this.append(typeByte);
-            bytes = $StringBuffer();
-            bytes.writeUInt32LE(val, 0);
-            this.append(bytes);
+            if (!implicit) this.appendUInt8(type);
+            this.buffer.writeUInt32LE(val, this.i);
+            this.i += 4;
             return 5;
           case FLOAT:
-            if (!implicit) this.append(typeByte);
-            bytes = $StringBuffer();
-            bytes.writeFloatLE(val, 0);
-            this.append(bytes);
+            if (!implicit) this.appendUInt8(type);
+            this.buffer.writeFloatLE(val, this.i);
+            this.i += 4;
             return 5;
           case DOUBLE:
-            if (!implicit) this.append(typeByte);
-            bytes = $StringBuffer();
-            bytes.writeDoubleLE(val, 0);
-            this.append(bytes);
+            if (!implicit) this.appendUInt8(type);
+            this.buffer.writeDoubleLE(val, this.i);
+            this.i += 8;
             return 9;
           case VARARRAY:
-            if (!implicit) this.append(typeByte);
+            if (!implicit) this.appendUInt8(type);
             this.writeValue(val.length, typeCheck(val.length));
             for (i = 0; i < val.length; ++i) {
               this.writeValue(val[i], typeCheck(val[i]));
             }
             break;
           case OBJECT:
-            if (!implicit) this.append(typeByte);
+            if (!implicit) this.appendUInt8(type);
             if (this.state & PARSED_SI) {
               index = matchLayout(val, this.stringIndex, this.OLI);
               if (!implicit) this.writeValue(index, this.OLItype, true);
@@ -708,18 +747,26 @@
             }
             break;
           case DATE:
-            if (!implicit) this.append(typeByte);
+            if (!implicit) this.appendUInt8(type);
             this.writeValue(val.valueOf(), DOUBLE, true);
             break;
           case BUFFER:
-            if (!implicit) this.append(typeByte);
-            this.writeValue(val.length, typeCheck(val.length));
-            for (i = 0; i < val.length; ++i) {
-              this.writeValue(val[i], CHAR, true);
+            if (!implicit) this.appendUInt8(type);
+            if (val instanceof ArrayBuffer) {
+              bytes = new Uint8Array(val);
+              this.writeValue(bytes.length, typeCheck(bytes.length));
+              for (i = 0; i < bytes.length; ++i) {
+                this.writeValue(bytes[i], CHAR, true);
+              }
+            } else if (IS_NODE && Buffer.isBuffer(val)) {
+              this.writeValue(val.length, typeCheck(val.length));
+              for (i = 0; i < val.length; ++i) {
+                this.writeValue(val[i], CHAR, true);
+              }
             }
             break;
           case REGEXP:
-            if (!implicit) this.append(typeByte);
+            if (!implicit) this.appendUInt8(type);
             parts = regexpToParts(val);
             this.writeString(parts[0]);
             this.writeString(parts[1]);
@@ -727,15 +774,21 @@
               return r + v.length + 1;
             }, 0);
         }
-      },
-      writeString: function (str) {
+      }
+      function writeString (str, utf16) {
         this.writeValue(str.length, typeCheck(str.length));
+        if (utf16) {
+          for (var i = 0; i < str.length; ++i) {
+            this.writeValue(str.charCodeAt(i), SHORT, true);
+          }
+          return;
+        }
         for (var i = 0; i < str.length; ++i) {
-          this.writeValue(str.charCodeAt(i), CHAR, true);
+          this.appendUInt8(str.charCodeAt(i));
         }
         return;
-      },
-      writeOLI: function (num) {
+      }
+      function writeOLI (num) {
         if (!this.stringIndex.length) return this;
         this.OLI = gatherLayouts(this.payload, this.stringIndex);
         if (!this.OLI.length) {
@@ -752,8 +805,8 @@
           }, this);
         }, this);
         return this;
-      },
-      writeSI: function () {
+      }
+      function writeSI () {
         this.stringIndex = gatherStrings(this.payload);
         if (!this.stringIndex.length) {
           this.state |= PARSED_SI;
@@ -768,6 +821,25 @@
         this.state |= PARSED_SI;
         return this;
       }
+      return function () {
+        this.writeData = writeData;
+        this.export = toBuffer;
+        this.writeValueWithSpec = writeValueWithSpec; 
+        this.writeValue = writeValue;
+        this.appendUInt8 = appendUInt8;
+        this.writeString = writeString;
+        this.writeSI = writeSI;
+        this.writeOLI = writeOLI;
+      }
+    })();
+    function $Encoder(obj, spec) {
+      if (!(this instanceof $Encoder)) return new $Encoder(obj, spec);
+      this.payload = obj;
+      this.buffer = $SmartArrayBuffer();
+      this.spec = spec;
+      this.state = 0;
+      this.i = 0;
+      $$EncoderMixin.call(this);
     }
     function matchLayout(val, stringIndex, OLI) {
       var i = 0, j, tmp, broken, layout = Object.getOwnPropertyNames(val).map(function (v) {
@@ -931,11 +1003,11 @@
       if (arr.indexOf(val) === -1) arr.push(val);
     }
     function parse(buf, flags) {
-      var parser = $Parser($StringBuffer(buf));
+      var parser = $Parser($SmartArrayBuffer(buf));
       if (flags & USE_INDEXING) parser.parseSI().parseOLI();
       return parser.parseValue(); 
     }
-    function stringify(val, flags) {
+    function bufferify(val, flags) {
       var encoder = $Encoder(val);
       if (flags & USE_INDEXING) encoder.writeSI().writeOLI();
       return encoder.writeData().export();
@@ -1050,19 +1122,22 @@
         if (first) ret += '}';
         return ret;
       },
-      stringify: function (val) {
+      bufferify: function (val) {
         return $Encoder(val, this.sorted).writeData().export();
       },
       parse: function (buf) {
-        return $Parser($StringBuffer(buf), this.sorted).parseValueWithSpec();
+        return $Parser($SmartArrayBuffer(buf), this.sorted).parseValueWithSpec();
       }
     }
     var LEON = {};
     assignTo(LEON)(types)(flags);
     LEON.parse = parse;
-    LEON.stringify = stringify;
+    LEON.bufferify = bufferify;
     LEON.toTemplate = toTemplate;
     LEON.Channel = Channel;
+    LEON.noConflict = function noConflict () {
+      return previous_LEON;
+    };
     return LEON;
   })();
   if (typeof exports !== 'undefined') {
