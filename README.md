@@ -1,11 +1,15 @@
 # LEON
 ## Little Endian Object Notation
 
-This is an optimized binary format for the serialization of JavaScript data structures that works in the browser and Node. There is a C implementation of LEON and it is currently available as an optimized native extension for PHP5 and PHP7.
+This is an optimized binary format for the serialization of JavaScript data structures that works in the browser and Node. There is a C implementation of LEON and it is will available as an optimized native extension for PHP5 and PHP7.
 
-LEON is a far more compact alternative to JSON that operates like a flatbuffer and is compatible with the browser. Instead of formatting the data as a human-readable string LEON stores it as a string containing the value's byte representation. There is no use of compression. Thus LEON provides all the features of JSON but exchanges its readability for efficiency. LEON can be used to serialize dynamic data using `LEON.stringify` and `LEON.parse`, but there is a major benefit to using LEON when you know ahead of time the types of the data you are serializing. If you know what you are sending and receiving, you can pass a template of the data to `LEON.Channel` which returns an object with its own `stringify` and `parse` methods that can be used to serialize data according to the schema. Another benefit to using a `LEON.Channel` is that it will only serialize the properties of an object that you specify in the template, so there is no need to construct a whole new object with only the data you intend to send, and there is no need to send more data than is necessary.
+LEON is a far more compact alternative to JSON that operates like a flatbuffer and is compatible with the browser. It is more compact than msgpack and also many times faster to encode/decode, even without the use of a native addon. Instead of formatting the data as a human-readable string LEON stores its byte representation as a `Buffer` in Node.js or as an `ArrayBuffer` in the browser. There is no use of compression. If the target environment does not support typed arrays LEON will fall back to using a string.
 
-Depending on what kind of data you have, serializing through a `LEON.Channel` can be about 3-10 times more compact than serializing with JSON. Experiment for yourself and see.
+LEON provides all the capability of JSON but exchanges its readability for compactness. In addition to this, LEON runs very fast, not quite faster than JSON but very close.
+
+LEON can be used to serialize dynamic data using `LEON.encode` and `LEON.decode`, but there is a major benefit to using LEON when you know ahead of time the types of the data you are serializing. If you know what you are sending and receiving, you can pass a template of the data to `LEON.Channel` which returns an object with its own `encode` and `decode` methods that can be used to serialize data according to the schema. Another benefit to using a `LEON.Channel` is that it will only serialize the properties of an object that you specify in the template, so there is no need to construct a whole new object with only the data you intend to send, and there is no need to send more data than is necessary. With JSON this is only partly possible, as you can only specify the keys you want to encode at the first level of depth in the object. With LEON you can specify the keys of the object you with to encode, as well as the keys for any objects it contains.
+
+Depending on what kind of data you have, serializing through a `LEON.Channel` can be about 2-3 times more compact than serializing with JSON, after the effects of gzip. Experiment for yourself and see.
 
 ## Usage
 
@@ -32,11 +36,9 @@ The LEON object exposes a number of constants that can be used to construct a te
 and of course there is
 - `LEON.DYNAMIC` any type
 
-If you want to indicate that you are sending an array, you pass `LEON.Channel` an array with one element, a template of the type of data that will be in each element of the array. If you are sending an object, you pass an object with the desired keys, whose values will be a template of the type of data that will be associated with that key. For this reason, arrays must contain objects and values of the same type, and the keys and types of values of objects must be known ahead of time. The idea is that you will construct a `LEON.Channel` on the receiving end of the transfer using the same template, and both ends can send/receive data over this "channel."
+If you want to indicate that you are sending an array, you pass `LEON.Channel` an array with one element: the template of the type of data that will be in each element of the array. If you are sending an object, you pass an object with the desired keys, whose values will be a template of the type of data that will be associated with that key. For this reason, arrays must contain objects and values of the same type, and the keys and types of values of objects must be known ahead of time, unless your template includes a `LEON.DYNAMIC` component. The idea is that you will construct a `LEON.Channel` on the receiving end of the transfer using the same template, and both ends can send/receive data over this "channel."
 
-If all of your data is dynamic, you can simply use `LEON.stringify` and `LEON.parse` to serialize it. If you want to minimize the byte-length of the serialized dynamic data (at a slight cost to performance) you can optionally pass `LEON.USE_INDEXING` as the second argument to these two functions and LEON will index any recurring strings and also the appearance of keys in any serialized objects. This is only recommended if your dynamic data has many objects with the same keys. The less dynamic the data is, the more useful this can be. This sort of indexing does not apply to the `stringify` and `parse` methods of a `LEON.Channel` object.
-
-Note: If all of your data is purely dynamic and indexing is not applicable, you should not use LEON to serialize. Although the resulting string will be of smaller bytesize, it does not outweigh the performance benfit of using JSON, since JSON is implemented via native bindings.
+If all of your data is dynamic, you can simply use `LEON.encode` and `LEON.decode` to serialize it.
 
 ## Examples
 
@@ -48,12 +50,12 @@ var channel = LEON.Channel({
 });
 var obj = { a: 'word', b: -500, c: [ { d: true, e: new Date(1435767518000) }, { d: false, e: new Date(
 1435767518000) } ] };
-var buf = channel.stringify(obj);
-// 'word\u0000\u000bþÿÿ\u0000\u0002 Þ\u0012U!Þ\u0012U'
-obj = channel.parse(buf);
+var buf = channel.encode(obj);
+// 21 bytes long
+obj = channel.decode(buf);
 // Same object.
 ```
-Notice that the buffer is only 21 characters, compared to raw LEON which is 60 characters, and compared to the equivalent JSON string which is 112 characters.
+In this case, the buffer is only 21 bytes in length, compared to the purely dynamic LEON which is 60 characters, and compared to the equivalent JSON string which is 112 characters.
 
 Another example:
 
@@ -62,11 +64,11 @@ var channel = LEON.Channel({
   strings: [ LEON.STRING ],
   numbers: [ LEON.INT ]
 });
-var buf = channel.stringify({
+var buf = channel.encode({
   strings: ['the', 'dog', 'ate', 'the', 'cat'],
   numbers: [100, 1000, 10000, 100000]
 });
-channel.parse(buf);
+channel.decode(buf);
 // Same object.
 ```
 Now consider an example which includes dynamic data:
@@ -101,24 +103,12 @@ var channel = LEON.Channel({
   staticallyTypedData: [{ first: LEON.CHAR, second: LEON.CHAR, third: LEON.CHAR, fourth: LEON.BOOLEAN }],
   dynamicallyTypedData: [LEON.DYNAMIC]
 });
-var serialized = channel.stringify(obj);
-//'\u0000\u0004\t\u0000\u0003\u0000\u0001a\u0019\u0000\u0001b\u0018\u0000\u0001c\u0017\u0000\u000254\u0000\u0001i!\u0015\u0000ðÜ_òtB\t\u0000\u0003\u0000\u0001d\u0000\u0005\u0000\u0001e \u0000\u0001f\u0010\u0000\u0004woop\u0000\u00037!FH Îì!!\u0016ê'
-// 70 characters long compared to 295 characters in JSON
-channel.parse(serialized);
+var serialized = channel.encode(obj);
+// 70 bytes long compared to 295 characters in JSON
+channel.decode(serialized);
 // Same object.
 ```
 
 If you want to create a template to pass to `LEON.Channel` dynamically you can pass an example of the data to be sent to `LEON.toTemplate` and the resulting value can be used to construct a `Channel`. This can also be used to avoid having to create a template manually.
 
-NOTE: LEON.Channel(LEON.DYNAMIC).stringify is equivalent to LEON.stringify, as well as with parse.
-
-NOTE: If you are using LEON in Node.js then a Buffer will deserialize as a native Buffer object, but if you are using LEON in the browser then it will attempt to deserialize to a StringBuffer object. If StringBuffer has not been loaded and LEON attempts to deserialize a Buffer in the browser it will throw. You can find StringBuffer here:
-
-http://github.com/raypulver/string-buffer
-
-Alternatively you can install StringBuffer with
-
-```
-npm install string-buffer
-bower install string-buffer
-```
+NOTE: LEON.Channel(LEON.DYNAMIC).encode is equivalent to LEON.encode, as well as with decode.
