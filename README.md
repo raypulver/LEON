@@ -1,7 +1,7 @@
 # LEON
 ## Little Endian Object Notation
 
-This is an optimized binary format for the serialization of JavaScript data structures that works in the browser and Node. There is a C implementation of LEON and it is will available as an optimized native extension for PHP5 and PHP7.
+This is an optimized binary format for the serialization of JavaScript data structures that works in the browser and Node. There is a C implementation of LEON and it will soon be available as an optimized native extension for PHP5 and PHP7.
 
 LEON is a far more compact alternative to JSON that operates like a flatbuffer and is compatible with the browser. It is more compact than msgpack and also many times faster to encode/decode, even without the use of a native addon. Instead of formatting the data as a human-readable string LEON stores its byte representation as a `Buffer` in Node.js or as an `ArrayBuffer` in the browser. There is no use of compression. If the target environment does not support typed arrays LEON will fall back to using a string.
 
@@ -23,13 +23,14 @@ The LEON object exposes a number of constants that can be used to construct a te
 - `LEON.INT` a 32-bit value with a sign bit
 - `LEON.FLOAT` a 32-bit floating point value
 - `LEON.DOUBLE` a 64-bit floating point value
-- `LEON.STRING` a string
+- `LEON.STRING` a string with char codes between 0 and 0xFF
+- `LEON.UTF16STRING` a string with char codes between 0 and 0xFFFF
 - `LEON.BOOLEAN` a true/false value
 - `LEON.NULL` a null value
 - `LEON.UNDEFINED` an undefined value
 - `LEON.NAN` a NaN value
 - `LEON.DATE` a Date object
-- `LEON.BUFFER` a Buffer object or a StringBuffer object if you are in an environment other than Node.js (see below)
+- `LEON.BUFFER` a Buffer or an ArrayBuffer or a binary string consisting of single byte characters
 - `LEON.REGEXP` a RegExp object
 - `LEON.MINUS_INFINITY` minus infinity
 - `LEON.INFINITY` positive infinity
@@ -109,6 +110,6 @@ channel.decode(serialized);
 // Same object.
 ```
 
-If you want to create a template to pass to `LEON.Channel` dynamically you can pass an example of the data to be sent to `LEON.toTemplate` and the resulting value can be used to construct a `Channel`. This can also be used to avoid having to create a template manually.
+If you want to create a template to pass to `LEON.Channel` dynamically you can pass an example of the data to be sent to `LEON.toTemplate` and the resulting value can be used to construct a `Channel`. This can also be used to avoid having to create a template manually.  A `Channel` object also has a "inspect" method that will return a readable string representation of the Channel you can use in your code (after adding the name of the LEON object before the type constants). Be warned that `LEON.toTemplate` can be very slow if you have a large set of data, so it is best used as a tool to write templates ahead of time to be added to your project.
 
 NOTE: LEON.Channel(LEON.DYNAMIC).encode is equivalent to LEON.encode, as well as with decode.

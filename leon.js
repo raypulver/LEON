@@ -1,12 +1,19 @@
-;(function () {
-  "use strict";
-
+;(function (root, factory) {
+  'use strict';
+  if (typeof define === 'function' && define.amd) {
+    define(factory);
+  } else if (typeof exports === 'object') {
+    module.exports = factory();
+  } else {
+    root.LEON = factory();
+  }
+})(this, function () {
+  'use strict';
   function uncurry(fn) {
     return function () {
       return Function.call.apply(fn, arguments);
     };
   }
-  
   var $Array = Array,
       Array$prototype = $Array.prototype,
       Array$forEach = uncurry(Array$prototype.forEach),
@@ -35,7 +42,7 @@
   }
 
   var root = this,
-      previous_LEON = root.LEON,
+      previousLEON = root && root.LEON,
   // define the constants here so we know where to find them
       ARRAY_BUFFER_DEFAULT_ALLOC = 0x10000,
       SIGNED = 0x01,
@@ -66,7 +73,7 @@
       Object$prototype = $Object.prototype,
       $String = String,
       String$fromCharCode = String.fromCharCode,
-      toString = root.toString || Object$prototype.toString,
+      toString = root && root.toString || Object$prototype.toString,
       Array$isArray = $Array.isArray || function (val) { 
         return '[object Array]' === toString.call(val);
       },
@@ -105,6 +112,8 @@
       }),
       IS_NODE, NATIVE_LITTLE_ENDIAN, HAS_TYPED_ARRAYS;
 
+// detect environment
+
   if (HAS_TYPED_ARRAYS = (function () {
     try {
       new Uint8Array(4);
@@ -126,7 +135,7 @@
         double = new Float64Array(buf64);
 
     if (IS_NODE = (function () {
-      // we just need to know there's a $Buffer
+      // we just need to know there's a Buffer
         try {
           new Buffer(4);
           return true;
@@ -168,7 +177,7 @@
     if (bits >= 32) return -v;
     return (((1 << bits) - 1) ^ v) + 1;
   }
-  var LEON = (function () {
+  return (function () {
     var $$ReallocMixin = (function () {
       // define realloc according to the environment
       var realloc;
@@ -578,22 +587,23 @@
         return this.buffer.readDoubleLE(this.i - 8);
       }
       function readValue (type) {
-        if (type === CHAR) {
-          return this.readUInt8();
-        } else if (type === (CHAR | SIGNED)) {
-          return this.readInt8();
-        } else if (type === SHORT) {
-          return this.readUInt16();
-        } else if (type === (SHORT | SIGNED)) {
-          return this.readInt16();
-        } else if (type === INT) {
-          return this.readUInt32();
-        } else if (type === (INT | SIGNED)) {
-          return this.readInt32();
-        } else if (type === FLOAT) {
-          return this.readFloat();
-        } else if (type === DOUBLE) {
-          return this.readDouble();
+        switch (type) {
+          case CHAR:
+            return this.readUInt8();
+          case SIGNED:
+            return this.readInt8();
+          case SHORT:
+            return this.readUInt16();
+          case SIGNED_SHORT:
+            return this.readInt16();
+          case INT:
+            return this.readUInt32();
+          case SIGNED_INT:
+            return this.readInt32();
+          case FLOAT:
+            return this.readFloat();
+          case DOUBLE:
+            return this.readDouble();
         }
       }
       return function () {
@@ -767,6 +777,7 @@
       if (float[0] === val) return FLOAT;
       return DOUBLE;
     }), (function (val) {
+      // formula to test if a value fits in an IEEE754 32-bit float, free to use
       val = Math.abs(val);
       var log = Math.log(val)/Math.LN2;
       log = (log < 0 ? Math.ceil(log) : Math.floor(log));
@@ -1267,15 +1278,8 @@
     LEON.toTemplate = toTemplate;
     LEON.Channel = Channel;
     LEON.noConflict = function noConflict () {
-      return previous_LEON;
+      return previousLEON;
     };
     return LEON;
   })();
-  if (typeof exports !== 'undefined') {
-    if (typeof module !== 'undefined' && module.exports) {
-      exports = module.exports = LEON;
-    }
-  } else {
-    root.LEON = LEON;
-  }
-}).call(this);
+})
