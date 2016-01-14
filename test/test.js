@@ -13,7 +13,7 @@ describe('LEON encoder/decoder', function () {
     var template = {
       c: LEON.STRING,
       d: [{
-        a: LEON.CHAR,
+        a: LEON.UINT8,
         b: LEON.BOOLEAN
       }]
     };
@@ -32,10 +32,10 @@ describe('LEON encoder/decoder', function () {
     var o = channel.decode(buf);
     expect(obj).to.eql(o);
   });
-  it('this should work', function () {
+  it('should serialized signed quantities', function () {
     var channel = LEON.Channel({
       a: LEON.STRING,
-      b: LEON.INT,
+      b: LEON.INT32,
       c: [{ d: LEON.BOOLEAN, e: LEON.DATE }]
     });
     var obj = { a: 'word', b: -500, c: [ { d: true, e: new Date(1435767518000) }, { d: false, e: new Date(
@@ -43,8 +43,8 @@ describe('LEON encoder/decoder', function () {
     var ser = channel.encode(obj);
     expect(channel.decode(ser)).to.eql(obj);
   });
-  it('this should work too', function () {
-    var channel = LEON.Channel({ strings: [ LEON.STRING ], numbers: [ LEON.INT ] });
+  it('should serialize unsigned quantities', function () {
+    var channel = LEON.Channel({ strings: [ LEON.STRING ], numbers: [ LEON.INT32 ] });
     var obj = { strings: ['the', 'dog', 'ate', 'the', 'cat'], numbers: [100, 1000, 10000, 100000]};
     var buf = channel.encode(obj);
     expect(channel.decode(buf)).to.eql(obj);
@@ -85,12 +85,12 @@ describe('LEON encoder/decoder', function () {
     }] };
     var channel = LEON.Channel(LEON.toTemplate(obj));
     var workingChannel = LEON.Channel({
-      woopdoop: LEON.UNSIGNED_CHAR,
+      woopdoop: LEON.UINT8,
       shoopdoop: [LEON.DOUBLE],
       doopwoop: [{
         a: LEON.BOOLEAN,
-        b: LEON.UNSIGNED_CHAR,
-        c: [LEON.UNSIGNED_CHAR],
+        b: LEON.UINT8,
+        c: [LEON.UINT8],
         d: LEON.STRING,
         e: LEON.DATE
       }]
@@ -103,16 +103,15 @@ describe('LEON encoder/decoder', function () {
     expect(new Uint8Array(LEON.encode(((1 << 24) + 1) * Math.pow(2, 0 - 127)))[0]).to.equal(LEON.DOUBLE);
   });
   it('should know how many bytes the integer will fit into', function () {
-    expect(new Uint8Array(LEON.encode(-128))[0]).to.equal(LEON.CHAR);
-    expect(new Uint8Array(LEON.encode(-129))[0]).to.equal(LEON.SHORT);
-    expect(new Uint8Array(LEON.encode(255))[0]).to.equal(LEON.UNSIGNED_CHAR);
-    expect(new Uint8Array(LEON.encode(256))[0]).to.equal(LEON.UNSIGNED_SHORT);
+    expect(new Uint8Array(LEON.encode(-128))[0]).to.equal(LEON.INT8);
+    expect(new Uint8Array(LEON.encode(-129))[0]).to.equal(LEON.INT16);
+    expect(new Uint8Array(LEON.encode(255))[0]).to.equal(LEON.UINT8);
+    expect(new Uint8Array(LEON.encode(256))[0]).to.equal(LEON.UINT16);
   });
   it('writes a float with the same bits as a Buffer would', function () {
     var ser = LEON.Channel(LEON.FLOAT).encode(-0.125);
     var expected = new Buffer(4);
     expected.writeFloatLE(-0.125, 0);
-    debugger;
     for (i = 0; i < ser.length; ++i) {
       expect(expected[i]).to.equal(ser[i]);
     }
@@ -136,7 +135,8 @@ describe('LEON encoder/decoder', function () {
   });
   it('can represent a date with full precision', function () {
     var date = new Date(1438876995235);
-    date = LEON.decode(LEON.encode(date));
+    var ser = LEON.encode(date);
+    date = LEON.decode(ser);
     expect(date.valueOf()).to.equal(1438876995235);
   });
   it('can serialize dynamic data along with typed data', function () {
@@ -167,7 +167,7 @@ describe('LEON encoder/decoder', function () {
       ]
     };
     var channel = LEON.Channel({
-      staticallyTypedData: [{ first: LEON.CHAR, second: LEON.CHAR, third: LEON.CHAR, fourth: LEON.BOOLEAN }],
+      staticallyTypedData: [{ first: LEON.UINT8, second: LEON.INT8, third: LEON.INT8, fourth: LEON.BOOLEAN }],
       dynamicallyTypedData: [LEON.DYNAMIC]
     });
     var serialized = channel.encode(obj);
@@ -176,6 +176,17 @@ describe('LEON encoder/decoder', function () {
   it('should provide a string representation of a Channel', function () {
     var expected = '{[Channel] STRING}';
     expect(LEON.Channel(LEON.STRING).inspect()).to.equal(expected);
+  });
+  it('should allow for user defined types', function () {
+    LEON.defineType(0x10, {
+      check: function (v) { return v instanceof Error; },
+      encode: function (buf, v) { buf.writeStringUTF8(v.message); },
+      decode: function (buf) { return Error(buf.readStringUTF8()); }
+    });
+    var payload = Error('woop');
+    var bounce = LEON.decode(LEON.encode(payload));
+    expect(bounce instanceof Error).to.eql(true);
+    expect(bounce.message).to.eql('woop');
   });
 });
     
